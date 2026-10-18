@@ -1,5 +1,5 @@
 'use strict';
-let gamesList = [], mode = 'library', busy = false, selected = 0, pin = '', settings = {}, editKey = '', editText = '', caps = false;
+let gamesList = [], hiddenGamesList = [], mode = 'library', busy = false, selected = 0, pin = '', settings = {}, editKey = '', editText = '', caps = false;
 const api = window.electronAPI;
 // Three layers (see dashboard/): sections say WHAT is shown, the navigator decides HOW focus moves,
 // the skin draws it. This file wires them to the admin screens, which still live here for now.
@@ -241,7 +241,7 @@ async function activate() {
   }
   if(mode==='xenia-advanced'){if(selected<xeniaView.advanced.length){xeniaPath={kind:'section',id:xeniaView.advanced[selected].id};return renderXeniaItems();}return renderXeniaHome();}
   if(mode==='xenia-items')return activateXenia();
-  if(mode==='game-list'){const list=gamesWithTitle();if(selected>=list.length)return returnSettings();gameTarget={game:list[selected],fromLibrary:false};return renderGameMenu();}
+  if(mode==='game-list'){const list=gameListGames();if(selected>=list.length)return returnSettings();gameTarget={game:list[selected],fromLibrary:false};return renderGameMenu();}
   if(mode==='game-menu')return activateGameMenu();
   if(mode==='patches')return activatePatch();
   if(mode==='updates')return activateUpdate();
@@ -392,12 +392,12 @@ function xeniaBack(){
   if(mode==='game-list'){returnSettings();return true;}
   return false;
 }
-function gamesWithTitle(){return gamesList.filter(game=>game.title_id);}
+function gameListGames(){return [...gamesList.filter(game=>game.title_id),...hiddenGamesList];}
 function renderGameList(){
-  mode='game-list';const list=gamesWithTitle();selected=Math.max(0,list.findIndex(game=>game.id===gameTarget?.game.id));gameTarget=null;
+  mode='game-list';const list=gameListGames();selected=Math.max(0,list.findIndex(game=>game.id===gameTarget?.game.id));gameTarget=null;
   modal('Game settings','D-pad: choose game · A: open · B: return');
-  content.replaceChildren(node('p','cover-summary',list.length?'Choose a game to give it its own settings.':'No game has a title ID yet. Save and rescan to read them from your game files.'));
-  buttons([...list.map(game=>game.title),backLabel()],'cover-options',activate);
+  content.replaceChildren(node('p','cover-summary',list.length?'Choose a game to give it its own settings, or show a hidden game again.':'No game has a title ID yet. Save and rescan to read them from your game files.'));
+  buttons([...list.map(game=>game.hidden?`Hidden: ${game.title}`:game.title),backLabel()],'cover-options',activate);
 }
 function renderGameMenu(){
   const game=gameTarget.game;mode='game-menu';selected=0;xeniaView=null;xeniaScope=null;xeniaPath=null;
@@ -412,6 +412,7 @@ function gameMenuEntries(){return [
   {id:'cover',label:'Change cover',run:()=>openCoverManager({game:gameTarget.game,leave:()=>backToGameMenu('cover')})},
   {id:'patches',label:'Patches',run:()=>openPatches()},
   {id:'info',label:'Game details',run:()=>openGameInfo()},
+  {id:'hidden',label:gameTarget.game.hidden?'Show game':'Hide game',run:()=>toggleGameHidden()},
   {id:'back',label:gameTarget.fromLibrary?'Return to games':'Return to game list',run:()=>gameTarget.fromLibrary?closeModal():renderGameList()}
 ];}
 // Optimized settings sit inside a game's settings; coming back reloads them because applying changed the override.
@@ -419,8 +420,18 @@ function backToGameSettings(){openXenia(gameTarget.game.id).then(()=>{selected=0
 function backToGameMenu(id){renderGameMenu();selected=Math.max(0,gameMenuEntries().findIndex(entry=>entry.id===id));highlight();return true;}
 function activateGameMenu(){
   const entry=gameMenuEntries()[selected];if(!entry)return;
-  if(entry.id!=='back'&&entry.id!=='cover'&&!gameTarget.game.title_id){errorDisplay.textContent='This game has no title ID.';return;}
+  if(entry.id!=='back'&&entry.id!=='cover'&&entry.id!=='hidden'&&!gameTarget.game.title_id){errorDisplay.textContent='This game has no title ID.';return;}
   return entry.run();
+}
+async function toggleGameHidden(){
+  const target=gameTarget.game,wasFromLibrary=gameTarget.fromLibrary;
+  busy=true;
+  try{
+    const result=await api.setGameHidden(target.id,!target.hidden);
+    gamesList=result.games;hiddenGamesList=result.hidden_games;
+    if(wasFromLibrary){closeModal();renderCarousel();status(target.hidden?'Game shown in the library.':'Game hidden from the library.');}
+    else{gameTarget={game:{...target,hidden:!target.hidden},fromLibrary:false};renderGameList();}
+  }catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}
 }
 // Patches: Xenia applies the variant whose executable hash matches, so they toggle by name.
 async function openPatches(){busy=true;try{patchView=await api.getPatches(gameTarget.game.id);renderPatches();}catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}}
@@ -686,7 +697,7 @@ async function leaveRoms(){
   if(busy)return;
   if(!romsChanged)return returnSettings();
   busy=true;errorDisplay.textContent='Updating the library…';
-  try{gamesList=await api.rescanRoms();renderCarousel();status('Library refreshed.');closeModal();}catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}
+  try{await api.rescanRoms();const library=await api.getLibrary();gamesList=library.games;hiddenGamesList=library.hidden_games||[];renderCarousel();status('Library refreshed.');closeModal();}catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}
 }
 async function activateRoms(){
   const row=romRows()[selected];if(!row)return;
@@ -958,7 +969,7 @@ async function endWizard(){
   try{await api.wizardEnd();}catch(error){status(error.message);}
   if(wizardRerun)api.lockAdmin().catch(()=>{});
   wizardRun=null;
-  try{const library=await api.getLibrary();gamesList=library.games;xeniaReady=library.xenia_ready!==false;}catch{/* the library stays as it was */}
+  try{const library=await api.getLibrary();gamesList=library.games;hiddenGamesList=library.hidden_games||[];xeniaReady=library.xenia_ready!==false;}catch{/* the library stays as it was */}
   showSectionColumn();renderCarousel();
 }
 async function startWizard(rerun=false){
@@ -985,7 +996,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   try{bootState=await api.getTheme();applyTheme(bootState);}catch(error){status(`Theme unavailable: ${error.message}`);}
   playBoot(bootState);
   try{for(const notice of await api.takeNotices())uiNotices.post(notice);}catch{/* no notices is fine */}
-  try{const library=await api.getLibrary();gamesList=library.games;xeniaReady=library.xenia_ready!==false;cm.mode=library.auto_cover_source||'launchbox';status(library.error);renderCarousel();}catch(error){status(error.message);renderCarousel();}
+  try{const library=await api.getLibrary();gamesList=library.games;hiddenGamesList=library.hidden_games||[];xeniaReady=library.xenia_ready!==false;cm.mode=library.auto_cover_source||'launchbox';status(library.error);renderCarousel();}catch(error){status(error.message);renderCarousel();}
   try{wizardPending=!!(await api.wizardState()).first_run;}catch{/* an old main process: no wizard */}
   maybeStartWizard();
   new GamepadWheelController();

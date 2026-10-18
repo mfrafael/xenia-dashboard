@@ -552,16 +552,18 @@ test('the Updates screen offers the right rows for each situation and never swit
   assert.equal(run('mode'), 'dialog'); assert.equal(byId['guide-title'].textContent, 'Start Xenia once');
 });
 
-test('the game menu lists Game settings, DLC and updates, Patches and Game details by name', async () => {
+test('the game menu offers game settings, hide/show, content, patches and details by name', async () => {
   const { run, byId } = guideHarness();
   const calls = [];
   run(`gameTarget={game:{id:'g',title:'Gears',title_id:'4D5307D5'},fromLibrary:true};
     openXenia=id=>globalThis.called='settings:'+id;openOptimized=()=>globalThis.called='optimized';openContent=()=>globalThis.called='content';openCoverManager=()=>globalThis.called='cover';openPatches=()=>globalThis.called='patches';openGameInfo=()=>globalThis.called='info';mode='game-menu'`);
-  assert.deepEqual(Array.from(run('gameMenuEntries().map(entry=>entry.label)')), ['Game settings', 'DLC and updates', 'Change cover', 'Patches', 'Game details', 'Return to games']);
+  assert.deepEqual(Array.from(run('gameMenuEntries().map(entry=>entry.label)')), ['Game settings', 'DLC and updates', 'Change cover', 'Patches', 'Game details', 'Hide game', 'Return to games']);
   for (const [index, expected] of [[0, 'settings:g'], [1, 'content'], [2, 'cover'], [3, 'patches'], [4, 'info']]) { run(`selected=${index};activateGameMenu()`); assert.equal(run('called'), expected); }
-  run("gameTarget.game.title_id='';called='';selected=1;activateGameMenu()"); assert.equal(run('called'), '', 'no title ID: nothing opens');
+  run("gameTarget.game.title_id='';called='';selected=1;activateGameMenu()"); assert.equal(run('called'), '', 'no title ID: game settings do not open');
   assert.match(byId['modal-error'].textContent, /no title ID/);
   run("called='';selected=2;activateGameMenu()"); assert.equal(run('called'), 'cover', 'a cover needs no title ID');
+  run("gameTarget.game.title_id='';selected=5;activateGameMenu()"); assert.equal(run('mode'), 'game-menu', 'hide/show remains available without a title ID');
+  run("gameTarget.game.hidden=true");assert.equal(run('gameMenuEntries()[5].label'),'Show game');
   run("gameTarget.game.title_id='4D5307D5';openXenia=async()=>{globalThis.called='reopened'};highlight=()=>{};mode='optimized';selected=0");
   assert.equal(run("xeniaBack()"), true, 'B on the optimized screen goes back to the game settings');
   assert.equal(run('called'), 'reopened');

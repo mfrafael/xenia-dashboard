@@ -57,6 +57,25 @@ test('PIN protection defaults on, can be disabled in-session and reenabled with 
   await assert.rejects(h.invoke('admin:unlock',''),/Incorrect PIN/);
   await h.invoke('admin:unlock','1234');assert.equal((await h.invoke('admin:settings')).admin_pin_required,true);
 });
+test('hiding games requires Xenia access, persists across scans, and can be undone',async()=>{
+  const h=await mainHarness();
+  assert.deepEqual(Array.from((await h.invoke('library:get')).games,game=>game.id),['test-game']);
+  assert.deepEqual(Array.from((await h.invoke('library:get')).hidden_games),[]);
+  await assert.rejects(h.invoke('xenia:game-hidden','test-game',true),/session expired/);
+  await assert.rejects(h.untrusted('xenia:game-hidden','test-game',true),/Untrusted/);
+  await h.invoke('admin:unlock','1234','xenia');
+  await assert.rejects(h.invoke('xenia:game-hidden','missing',true),/Unknown game/);
+  await assert.rejects(h.invoke('xenia:game-hidden','test-game','yes'),/Invalid hidden-game setting/);
+  const hidden=await h.invoke('xenia:game-hidden','test-game',true);
+  assert.deepEqual(Array.from(hidden.games),[]);
+  assert.equal(hidden.hidden_games[0].id,'test-game');
+  assert.equal(hidden.hidden_games[0].hidden,true);
+  const scanned=await h.invoke('xenia:roms-rescan');
+  assert.deepEqual(Array.from(scanned),[],'rescans do not make hidden games visible');
+  const shown=await h.invoke('xenia:game-hidden','test-game',false);
+  assert.equal(shown.games[0].id,'test-game');
+  assert.deepEqual(Array.from(shown.hidden_games),[]);
+});
 test('native pickers require PIN and trusted IPC, constrain picker type and preserve cancel', async () => {
   const h = await mainHarness();
   await assert.rejects(h.invoke('covers:search', 'test-game', 'xenia-manager'), /session expired/);
