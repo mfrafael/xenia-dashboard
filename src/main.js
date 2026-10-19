@@ -202,21 +202,18 @@ function lockedSections(){return Array.isArray(library.locked_sections)?SECTION_
 function checkSection(section){if(section===undefined||section===null)return '*';if(!SECTION_IDS.includes(section))throw Error('Unknown section');return section;}
 function pinRequiredFor(scope){if(wizardSession&&SECTION_IDS.includes(scope))return false;return library.admin_pin_required!==false&&(scope==='*'||lockedSections().includes(scope));}
 function requireAdmin(section) { if (!(sessionValid('*') || (section && sessionValid(section)))) throw new Error('Admin session expired. Open administrator access again.'); }
-function publicGameList(games) { return groupGames(games).map(g=>{
+// Hidden games are one list of ids in the library (hidden_game_ids) and nothing else says so: a rescan, a cover change or a re-read
+// of the folders can never bring a hidden game back, or hide a shown one. A multi-disc game is hidden when all its discs are.
+const hiddenGameIds=()=>new Set(Array.isArray(library.hidden_game_ids)?library.hidden_game_ids.filter(id=>typeof id==='string'):[]);
+const isHidden=(game,ids)=>game.discs?game.discs.every(disc=>ids.has(disc.id)):ids.has(game.id);
+function publicGameList(games,hidden=false) { const ids=hiddenGameIds(); return groupGames(games).filter(g=>isHidden(g,ids)===hidden).map(g=>{
   const art=g.discs?.find(d=>d.cover_art_path)||g;
   const cover=art.cover_art_path?`kratos-art://cover/${art.id}?v=${coverRevision}`:null;
-  return {id:g.id,title:g.title,...(g.title_id?{title_id:g.title_id}:{}),...(g.hidden?{hidden:true}:{}),uses_fallback_art:!cover,cover_art_path:cover,
+  return {id:g.id,title:g.title,...(g.title_id?{title_id:g.title_id}:{}),...(hidden?{hidden:true}:{}),uses_fallback_art:!cover,cover_art_path:cover,
     ...(g.discs?{discs:g.discs.map(d=>({id:d.id,number:d.disc_number,title:`Disc ${d.disc_number}`,uses_fallback_art:!cover,cover_art_path:cover}))}:{})};
 }); }
-function publicGames() { return publicGameList(library.games.filter(game=>game.hidden!==true)); }
-function publicHiddenGames() { return publicGameList(library.games.filter(game=>game.hidden===true)); }
-function preserveHiddenGames(games) {
-  const hidden=new Set([
-    ...(Array.isArray(library.hidden_game_ids)?library.hidden_game_ids.filter(id=>typeof id==='string'):[]),
-    ...library.games.filter(game=>game.hidden===true).map(game=>game.id)
-  ]);
-  return games.map(game=>hidden.has(game.id)?{...game,hidden:true}:game);
-}
+function publicGames() { return publicGameList(library.games); }
+function publicHiddenGames() { return publicGameList(library.games,true); }
 const validBounds=b=>b&&['x','y','width','height'].every(k=>Number.isInteger(b[k]))&&b.width>=960&&b.height>=540&&b.width<=16384&&b.height<=16384;
 const windowedBounds=()=>validBounds(library?.window_bounds)?library.window_bounds:{width:1280,height:720};
 async function setWindowMode(mode){
@@ -328,7 +325,7 @@ else {
       scanError = failed.length ? `Could not read: ${failed.join(', ')}` : '';
       return games;
     };
-    try { library.games = preserveHiddenGames(await scanFolders()); await scanner.saveLibrary(libraryFile, library); } catch (error) { scanError = `Scan failed: ${error.message}`; }
+    try { library.games = await scanFolders(); await scanner.saveLibrary(libraryFile, library); } catch (error) { scanError = `Scan failed: ${error.message}`; }
     protocol.handle('nxe-app',async request=>{
       try{
         const url=new URL(request.url),file=url.pathname.slice(1);
@@ -372,9 +369,9 @@ else {
       const game=groupGames(library.games).find(item=>item.id===gameId);
       if(!game)throw Error('Unknown game');
       const ids=new Set(game.discs?game.discs.map(disc=>disc.id):[game.id]);
-      const hiddenIds=new Set(Array.isArray(library.hidden_game_ids)?library.hidden_game_ids.filter(id=>typeof id==='string'):[]);
+      const hiddenIds=hiddenGameIds();
       for(const id of ids){if(hidden)hiddenIds.add(id);else hiddenIds.delete(id);}
-      const next={...library,hidden_game_ids:[...hiddenIds],games:library.games.map(item=>ids.has(item.id)?{...item,hidden}:item)};
+      const next={...library,hidden_game_ids:[...hiddenIds]};
       await scanner.saveLibrary(libraryFile,next);library=next;
       return {games:publicGames(),hidden_games:publicHiddenGames()};
     }));
@@ -457,7 +454,7 @@ else {
     }));
     handle('admin:cover-rescan',()=>serialized(async()=>{
       requireAdmin('dashboard');const games=await scanFolders();requireAdmin('dashboard');
-      const next={...library,games:preserveHiddenGames(games)};await scanner.saveLibrary(libraryFile,next);library=next;coverRevision++;return publicGames();
+      const next={...library,games};await scanner.saveLibrary(libraryFile,next);library=next;coverRevision++;return publicGames();
     }));
     // The Folders screen: ROM folders, where the dashboard keeps Xenia, and Xenia's own content folder (read from its config).
     const foldersView = async () => {
@@ -491,7 +488,7 @@ else {
     handle('xenia:roms-rescan', () => serialized(async () => {
       requireAdmin('xenia');
       const games = await scanFolders();
-      requireAdmin('xenia'); const next = { ...library, games:preserveHiddenGames(games) }; await scanner.saveLibrary(libraryFile, next); library = next; coverRevision++; return publicGames();
+      requireAdmin('xenia'); const next = { ...library, games }; await scanner.saveLibrary(libraryFile, next); library = next; coverRevision++; return publicGames();
     }));
     handle('xenia:settings',async gameId=>{requireAdmin('xenia');const view=xeniaView(await xeniaFiles(gameId));requireAdmin('xenia');return view;});
     handle('xenia:set',(gameId,id,value)=>serialized(async()=>{
