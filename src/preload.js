@@ -32,7 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   chooseOwnXenia: () => ipcRenderer.invoke('xenia:updates-own'),
   coverSources: () => ipcRenderer.invoke('covers:sources'),
   prepareCoverSource: source => ipcRenderer.invoke('covers:prepare', source),
-  searchCovers: (gameId, source) => ipcRenderer.invoke('covers:search', gameId, source),
+  searchCovers: (gameId, source, query) => ipcRenderer.invoke('covers:search', gameId, source, query),
   coverPictures: (gameId, source, key) => ipcRenderer.invoke('covers:pictures', gameId, source, key),
   previewCover: (gameId, source, key, picture) => ipcRenderer.invoke('covers:preview', gameId, source, key, picture),
   applyCover: (gameId, source, key, picture) => ipcRenderer.invoke('covers:apply', gameId, source, key, picture),

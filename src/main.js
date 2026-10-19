@@ -653,7 +653,12 @@ else {
       requireAnyAdmin();const source=coverSource(sourceId);
       return {id:source.id,label:source.label,needs_download:source.needsDownload,...await source.prepare(progress=>sendCoverProgress({kind:'download',...progress}))};
     }));
-    handle('covers:search',(gameId,sourceId)=>{requireAdmin('xenia');return coverSource(sourceId).search(coverTitle(coverGame(gameId)));});
+    handle('covers:search',(gameId,sourceId,query)=>{
+      requireAdmin('xenia');const source=coverSource(sourceId),game=coverGame(gameId);
+      if(query===undefined)return source.search(coverTitle(game));
+      if(sourceId!=='launchbox'||typeof query!=='string'||!query.trim()||query.trim().length>120)throw Error('Invalid LaunchBox search text');
+      return source.search(query.trim());
+    });
     handle('covers:pictures',(gameId,sourceId,key)=>{requireAdmin('xenia');coverGame(gameId);return coverSource(sourceId).pictures(key);});
     handle('covers:preview',async(gameId,sourceId,key,picture)=>{
       requireAdmin('xenia');coverGame(gameId);

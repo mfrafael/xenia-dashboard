@@ -646,6 +646,9 @@ test('LaunchBox through the cover manager: download once, then search, preview a
   await assert.rejects(h.invoke('covers:prepare', 'xenia-manager'), /needs no download/);
   const ready = await h.invoke('covers:prepare', 'launchbox'); assert.deepEqual([ready.id, ready.ready, ready.games], ['launchbox', true, 1]);
   const found = await h.invoke('covers:search', 'test-game', 'launchbox'); assert.deepEqual([found[0].key, found[0].title], ['77', 'Test Game']);
+  const manual = await h.invoke('covers:search', 'test-game', 'launchbox', '  test game  '); assert.deepEqual([manual[0].key, manual[0].title], ['77', 'Test Game'], 'a supplied LaunchBox query is trimmed and searched');
+  for (const query of ['', '  ', 'x'.repeat(121), 123]) await assert.rejects(h.invoke('covers:search', 'test-game', 'launchbox', query), /Invalid LaunchBox search text/);
+  await assert.rejects(h.invoke('covers:search', 'test-game', 'xenia-manager', 'Test Game'), /Invalid LaunchBox search text/);
   assert.deepEqual((await h.invoke('covers:pictures', 'test-game', 'launchbox', '77')).map(item => item.key), ['front-na.jpg', 'box3d.png']);
   await assert.rejects(h.invoke('covers:pictures', 'test-game', 'launchbox', '999'), /Unknown LaunchBox game/);
   for (const bad of ['../etc/passwd', 'other.jpg', 'https://evil.example/x.jpg']) await assert.rejects(h.invoke('covers:preview', 'test-game', 'launchbox', '77', bad), /Unknown LaunchBox picture/);

@@ -588,17 +588,30 @@ test('the cover manager shows the same flow for every source and one bulk screen
   const { run } = guideHarness();
   const sources = [{ id: 'xenia-manager', label: 'Xenia Manager', needs_download: false, ready: true }, { id: 'launchbox', label: 'LaunchBox', needs_download: true, ready: false, built: 0, games: 0 }];
   const labels = () => Array.from(run('coverRows().map(row=>row.label)'));
-  run(`cm={...cm,context:{game:{id:'g',title:'Gears'},leave(){}},sources:${JSON.stringify(sources)},stage:'home',source:null,games:[],pictures:[],game:null}`);
+  run(`cm={...cm,context:{game:{id:'g',title:'Gears'},leave(){}},sources:${JSON.stringify(sources)},stage:'home',source:null,games:[],pictures:[],game:null,query:'Gears'}`);
   assert.deepEqual(labels(), ['Choose an image from this computer', 'Xenia Manager covers (online)', 'LaunchBox covers (online)', 'Return to game options'], 'a file and every source, in one list');
   run(`cm.stage='setup';cm.source=cm.sources[1]`); assert.deepEqual(labels(), ['Download LaunchBox data', 'Return']);
-  run(`cm.stage='games';cm.games=[{key:'1',title:'Gears of War',pictures:5}]`); assert.deepEqual(labels(), ['Gears of War (5)', 'Update LaunchBox data', 'Return'], 'a source with data to download can refresh it');
-  run(`cm.source=cm.sources[0]`); assert.deepEqual(labels(), ['Gears of War (5)', 'Return'], 'an online source has nothing to update');
+  run(`cm.stage='games';cm.source=cm.sources[1];cm.games=[{key:'1',title:'Gears of War',pictures:5}]`); assert.deepEqual(labels(), ['Search LaunchBox for: Gears', 'Gears of War (5)', 'Update LaunchBox data', 'Return'], 'LaunchBox exposes editable search text and can refresh its data');
+  run(`cm.source=cm.sources[0]`); assert.deepEqual(labels(), ['Gears of War (5)', 'Return'], 'Xenia Manager has no LaunchBox query row or data update');
   run(`cm.stage='pictures';cm.pictures=[{key:'a',label:'Front · North America'},{key:'b',label:'3D box'}]`); assert.deepEqual(labels(), ['Front · North America', '3D box', 'Back']);
   run(`cm.context={game:null,leave(){}};cm.stage='bulk';cm.mode='xenia-manager'`);
   assert.deepEqual(labels(), ['Source: Xenia Manager', 'Download covers', 'Download missing covers', 'Rescan local cover images', 'Return'], 'Source first, the downloads next, the local scan last; no per-game search or replace: that is Change cover');
   run(`cm.mode='launchbox'`); assert.deepEqual(labels(), ['Source: LaunchBox', 'Update LaunchBox data', 'Download covers', 'Download missing covers', 'Rescan local cover images', 'Return'], 'the data of the source sits right under it');
   run(`cm.mode='both'`); assert.deepEqual(labels(), ['Source: LaunchBox, then Xenia Manager', 'Update LaunchBox data', 'Download covers', 'Download missing covers', 'Rescan local cover images', 'Return']);
   run(`cm.sources[1].ready=true`); assert.deepEqual(labels(), ['Source: LaunchBox, then Xenia Manager', 'Update LaunchBox data', 'Download covers', 'Download missing covers', 'Rescan local cover images', 'Return'], 'already downloaded: the row stays, to refresh it');
+});
+test('the per-game LaunchBox search row opens the text editor and searches with its edited query', async () => {
+  const { run } = guideHarness();
+  run(`globalThis.edits=[];globalThis.searched=null;globalThis.rendered=null;
+    editTextEntry=action=>edits.push(action);
+    renderCover=index=>globalThis.rendered=index;
+    api.searchCovers=async(gameId,source,query)=>{globalThis.searched=[gameId,source,query];return [{key:'77',title:'Halo 3',pictures:2}]};
+    cm={...cm,context:{game:{id:'g',title:'Halo'}},source:{id:'launchbox'},stage:'games',query:'Halo',games:[]};selected=0;`);
+  await run('activateCover()');
+  assert.deepEqual(Array.from(run('[edits[0].title,edits[0].label,edits[0].value]')), ['Search LaunchBox', 'Game name', 'Halo']);
+  await run("edits[0].onDone(' Halo 3 ')");
+  assert.deepEqual(Array.from(run('searched')), ['g', 'launchbox', 'Halo 3']);
+  assert.equal(run('cm.query'), 'Halo 3'); assert.equal(run('cm.games[0].title'), 'Halo 3'); assert.equal(run('rendered'), 0);
 });
 test('B steps back through the cover manager one level at a time and leaves to where it was opened from', () => {
   const { run } = guideHarness();
