@@ -1,5 +1,5 @@
 'use strict';
-let gamesList = [], mode = 'library', busy = false, selected = 0, pin = '', settings = {}, editKey = '', editText = '', caps = false;
+let gamesList = [], hiddenGamesList = [], mode = 'library', busy = false, selected = 0, pin = '', settings = {}, editKey = '', editText = '', caps = false;
 const api = window.electronAPI;
 // Three layers (see dashboard/): sections say WHAT is shown, the navigator decides HOW focus moves,
 // the skin draws it. This file wires them to the admin screens, which still live here for now.
@@ -41,6 +41,7 @@ let pinShown=true,entryAfterUnlock=null,unlockSection,entryMode=null,dialog=null
 let updatesView=null,updatesChannel='edge',updatesLatest={};
 let settingsTitle='PIN and locks';
 let xeniaView=null,xeniaScope=null,xeniaPath=null,xeniaEdit=null,gameTarget=null,patchView=null;
+let textEditAction=null;
 function displayedGames(){return discView?discView.game.discs:gamesList;}
 function leaveDiscs(){if(!discView)return false;window.uiSounds?.play('back');nav.setIndex('library',discView.returnIndex);discView=null;renderCarousel();return true;}
 function returnToLibrary(){if(!discView)return;nav.setIndex('library',discView.returnIndex);discView=null;renderCarousel();}
@@ -188,7 +189,7 @@ async function openPin() {
   }catch(error){gameTarget=null;entryAfterUnlock=null;unlockSection=undefined;status(error.message);}finally{busy=false;}
 }
 function renderPin() { content.replaceChildren(node('div','entry','●'.repeat(pin.length) || 'Enter PIN'));buttons(pinKeys,'pin-grid',activate); }
-function closeModal() { window.uiSounds?.play('close');mode='library';gameTarget=null;entryAfterUnlock=null;unlockSection=undefined;entryMode=null;activeRows=SECURITY_ROWS;settingsTitle='PIN and locks';xeniaView=null;xeniaEdit=null;pin='';editText='';settings={};document.body.classList.remove('modal-open');document.getElementById('overlay').classList.add('hidden');if(!wizardRun?.active)api.lockAdmin().catch(()=>{});if(wizardRun?.active&&!wizardRun.screenClosed())wizardRun.reenter(); }
+function closeModal() { window.uiSounds?.play('close');mode='library';gameTarget=null;entryAfterUnlock=null;unlockSection=undefined;entryMode=null;activeRows=SECURITY_ROWS;settingsTitle='PIN and locks';xeniaView=null;xeniaEdit=null;textEditAction=null;pin='';editText='';settings={};document.body.classList.remove('modal-open');document.getElementById('overlay').classList.add('hidden');if(!wizardRun?.active)api.lockAdmin().catch(()=>{});if(wizardRun?.active&&!wizardRun.screenClosed())wizardRun.reenter(); }
 function lockedSection(id){return (settings.locked_sections||[]).includes(id);}
 function renderSettings() {
   content.replaceChildren();buttons(activeRows.map(row=>row.action==='pin'?`PIN protection: ${settings.admin_pin_required===false?'off':'on'}`:row.action?.startsWith('lock-')?`${row.label}: ${lockedSection(row.action.slice(5))?'on':'off'}`:row.label),'settings',activate);
@@ -214,8 +215,8 @@ function keyboardKeys() { const letters = 'abcdefghijklmnopqrstuvwxyz';return [.
 function renderKeyboard(focusInput = false) {
   const entry = node('input', 'entry entry-input');
   entry.type = editKey === 'new_pin' ? 'password' : 'text';
-  entry.value = editText; entry.maxLength = 4096;
-  entry.setAttribute('aria-label', xeniaEdit ? xeniaEdit.label : fields.find(f => f[0] === editKey)[1]);
+  entry.value = editText; entry.maxLength = textEditAction?.maxLength || 4096;
+  entry.setAttribute('aria-label', xeniaEdit ? xeniaEdit.label : textEditAction ? textEditAction.label : fields.find(f => f[0] === editKey)[1]);
   entry.autocomplete = 'off'; entry.spellcheck = false;
   entry.addEventListener('input', () => { editText = entry.value; });
   content.replaceChildren(entry);
@@ -226,7 +227,12 @@ function renderKeyboard(focusInput = false) {
   buttons(keyboardKeys(),'key-grid',activate);
   if (focusInput) entry.focus();
 }
-function cancelEdit() { if(xeniaEdit){const item=xeniaEdit;xeniaEdit=null;editText='';return renderXeniaItems(Math.max(0,xeniaItems().indexOf(item)));} editText='';mode='settings';selected=settingsIndex(editKey);modal(settingsTitle,'D-pad: choose · A: edit/select · B: return to the dashboard');renderSettings(); }
+function editTextEntry(action) {
+  textEditAction=action;editKey='text';editText=action.value;mode='keyboard';selected=0;
+  modal(action.title,'Type or paste, then Enter. D-pad: move · A: type · X: erase · Y: done · Esc/B: discard');renderKeyboard(true);
+}
+function editTextLimit() { return textEditAction?.maxLength || 4096; }
+function cancelEdit() { if(xeniaEdit){const item=xeniaEdit;xeniaEdit=null;editText='';return renderXeniaItems(Math.max(0,xeniaItems().indexOf(item)));} if(textEditAction){const action=textEditAction;textEditAction=null;editText='';mode='covers';return action.onCancel?.();} editText='';mode='settings';selected=settingsIndex(editKey);modal(settingsTitle,'D-pad: choose · A: edit/select · B: return to the dashboard');renderSettings(); }
 async function activate() {
   if(busy) return;
   window.uiSounds?.play(mode==='pin'?(pinKeys[selected]==='Back'?'left':'right'):'select');
@@ -241,7 +247,7 @@ async function activate() {
   }
   if(mode==='xenia-advanced'){if(selected<xeniaView.advanced.length){xeniaPath={kind:'section',id:xeniaView.advanced[selected].id};return renderXeniaItems();}return renderXeniaHome();}
   if(mode==='xenia-items')return activateXenia();
-  if(mode==='game-list'){const list=gamesWithTitle();if(selected>=list.length)return returnSettings();gameTarget={game:list[selected],fromLibrary:false};return renderGameMenu();}
+  if(mode==='game-list'){const list=gameListGames();if(selected>=list.length)return returnSettings();gameTarget={game:list[selected],fromLibrary:false};return renderGameMenu();}
   if(mode==='game-menu')return activateGameMenu();
   if(mode==='patches')return activatePatch();
   if(mode==='updates')return activateUpdate();
@@ -262,7 +268,7 @@ async function activate() {
     else if(row.action==='pin')return openChoice({title:'PIN protection',text:'Off: nothing asks for a PIN, and anyone can change settings and quit.',options:ON_OFF,current:settings.admin_pin_required!==false,onPick:value=>changeSecurity(async()=>{const access=await api.setPinProtection(value);settings.admin_pin_required=access.pin_required;})});
     else closeModal();
   } else if(mode==='keyboard') {
-    const key=keyboardKeys()[selected];if(key==='Done')return finishEdit();if(key==='Back')editText=editText.slice(0,-1);else if(key==='Case')caps=!caps;else if(editText.length<4096)editText+=key;renderKeyboard();
+    const key=keyboardKeys()[selected];if(key==='Done')return finishEdit();if(key==='Back')editText=editText.slice(0,-1);else if(key==='Case')caps=!caps;else if(editText.length<editTextLimit())editText+=key;renderKeyboard();
   }
 }
 async function changeSecurity(work){busy=true;try{await work();renderSettings();}catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}}
@@ -273,6 +279,7 @@ async function submitPin(withSound=true) {
 }
 async function finishEdit() {
   if(xeniaEdit)return finishXeniaEdit();
+  if(textEditAction){const action=textEditAction,text=editText;textEditAction=null;editText='';mode='covers';return action.onDone(text);}
   const key=editKey,text=editText;editText='';mode='settings';selected=settingsIndex(key);modal(settingsTitle,'D-pad: choose · A: edit/select · B: return to the dashboard');
   if(key!=='new_pin'){settings[key]=text;renderSettings();return;}
   settings.new_pin='';renderSettings();if(!text)return;
@@ -392,12 +399,12 @@ function xeniaBack(){
   if(mode==='game-list'){returnSettings();return true;}
   return false;
 }
-function gamesWithTitle(){return gamesList.filter(game=>game.title_id);}
+function gameListGames(){return [...gamesList.filter(game=>game.title_id),...hiddenGamesList];}
 function renderGameList(){
-  mode='game-list';const list=gamesWithTitle();selected=Math.max(0,list.findIndex(game=>game.id===gameTarget?.game.id));gameTarget=null;
+  mode='game-list';const list=gameListGames();selected=Math.max(0,list.findIndex(game=>game.id===gameTarget?.game.id));gameTarget=null;
   modal('Game settings','D-pad: choose game · A: open · B: return');
-  content.replaceChildren(node('p','cover-summary',list.length?'Choose a game to give it its own settings.':'No game has a title ID yet. Save and rescan to read them from your game files.'));
-  buttons([...list.map(game=>game.title),backLabel()],'cover-options',activate);
+  content.replaceChildren(node('p','cover-summary',list.length?'Choose a game to give it its own settings, or show a hidden game again.':'No game has a title ID yet. Save and rescan to read them from your game files.'));
+  buttons([...list.map(game=>game.hidden?`Hidden: ${game.title}`:game.title),backLabel()],'cover-options',activate);
 }
 function renderGameMenu(){
   const game=gameTarget.game;mode='game-menu';selected=0;xeniaView=null;xeniaScope=null;xeniaPath=null;
@@ -412,6 +419,7 @@ function gameMenuEntries(){return [
   {id:'cover',label:'Change cover',run:()=>openCoverManager({game:gameTarget.game,leave:()=>backToGameMenu('cover')})},
   {id:'patches',label:'Patches',run:()=>openPatches()},
   {id:'info',label:'Game details',run:()=>openGameInfo()},
+  {id:'hidden',label:gameTarget.game.hidden?'Show game':'Hide game',run:()=>toggleGameHidden()},
   {id:'back',label:gameTarget.fromLibrary?'Return to games':'Return to game list',run:()=>gameTarget.fromLibrary?closeModal():renderGameList()}
 ];}
 // Optimized settings sit inside a game's settings; coming back reloads them because applying changed the override.
@@ -419,8 +427,18 @@ function backToGameSettings(){openXenia(gameTarget.game.id).then(()=>{selected=0
 function backToGameMenu(id){renderGameMenu();selected=Math.max(0,gameMenuEntries().findIndex(entry=>entry.id===id));highlight();return true;}
 function activateGameMenu(){
   const entry=gameMenuEntries()[selected];if(!entry)return;
-  if(entry.id!=='back'&&entry.id!=='cover'&&!gameTarget.game.title_id){errorDisplay.textContent='This game has no title ID.';return;}
+  if(entry.id!=='back'&&entry.id!=='cover'&&entry.id!=='hidden'&&!gameTarget.game.title_id){errorDisplay.textContent='This game has no title ID.';return;}
   return entry.run();
+}
+async function toggleGameHidden(){
+  const target=gameTarget.game,wasFromLibrary=gameTarget.fromLibrary;
+  busy=true;
+  try{
+    const result=await api.setGameHidden(target.id,!target.hidden);
+    gamesList=result.games;hiddenGamesList=result.hidden_games;
+    if(wasFromLibrary){closeModal();renderCarousel();status(target.hidden?'Game shown in the library.':'Game hidden from the library.');}
+    else{gameTarget={game:{...target,hidden:!target.hidden},fromLibrary:false};renderGameList();}
+  }catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}
 }
 // Patches: Xenia applies the variant whose executable hash matches, so they toggle by name.
 async function openPatches(){busy=true;try{patchView=await api.getPatches(gameTarget.game.id);renderPatches();}catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}}
@@ -686,7 +704,7 @@ async function leaveRoms(){
   if(busy)return;
   if(!romsChanged)return returnSettings();
   busy=true;errorDisplay.textContent='Updating the library…';
-  try{gamesList=await api.rescanRoms();renderCarousel();status('Library refreshed.');closeModal();}catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}
+  try{await api.rescanRoms();const library=await api.getLibrary();gamesList=library.games;hiddenGamesList=library.hidden_games||[];renderCarousel();status('Library refreshed.');closeModal();}catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}
 }
 async function activateRoms(){
   const row=romRows()[selected];if(!row)return;
@@ -857,7 +875,7 @@ function input(action) {
   const delta={left:-1,right:1,up:-columns,down:columns}[action];if(delta!==undefined){const previous=selected;selected=Math.max(0,Math.min(count-1,selected+delta));highlight(selected!==previous,delta<0?'left':'right');selectableButtons()[selected]?.scrollIntoView({block:'nearest'});}
 }
 class GamepadWheelController {
-  constructor(){this.deadzone=.35;this.repeatDelay=220;this.lastInputTime=0;this.buttonStates={};this.controller=null;this.direction='';this.poll=this.poll.bind(this);requestAnimationFrame(this.poll);}
+  constructor(){this.deadzone=.35;this.repeatDelay=220;this.lastInputTime=0;this.deleteStartedAt=null;this.lastDeleteTime=0;this.buttonStates={};this.controller=null;this.direction='';this.poll=this.poll.bind(this);requestAnimationFrame(this.poll);}
   poll(timestamp){
     const gp=[...(navigator.getGamepads?.() || [])].find(g=>g?.connected && g.mapping==='standard');
     document.getElementById('controller-status').textContent=gp?'Xbox controller connected':'Connect a standard Xbox controller and press a button';
@@ -874,7 +892,14 @@ class GamepadWheelController {
       const axisX=gp.axes[0] || 0,axisY=gp.axes[1] || 0;
       const direction=chord?'':pressed(14)||axisX < -this.deadzone?'left':pressed(15)||axisX>this.deadzone?'right':pressed(12)||axisY < -this.deadzone?'up':pressed(13)||axisY>this.deadzone?'down':mode==='library'&&pressed(4)?'lb':mode==='library'&&pressed(5)?'rb':mode==='library'&&pressed(6)?'lt':mode==='library'&&pressed(7)?'rt':'';
       if(direction && (direction!==this.direction || timestamp-this.lastInputTime>this.repeatDelay)){input(direction);this.lastInputTime=timestamp;}this.direction=direction;
-      for(const [i,action] of [[0,'a'],[1,'b'],[2,'x'],[3,'y']])if(edge(i))input(action);
+      for(const [i,action] of [[0,'a'],[1,'b'],[2,'x'],[3,'y']]) {
+        if(i===2&&mode==='keyboard') {
+          if(edge(i)){input(action);this.deleteStartedAt=timestamp;this.lastDeleteTime=timestamp;}
+          else if(pressed(i)&&this.deleteStartedAt!==null&&timestamp-this.deleteStartedAt>=400&&timestamp-this.lastDeleteTime>=80){input(action);this.lastDeleteTime=timestamp;}
+          else if(!pressed(i))this.deleteStartedAt=null;
+        } else if(edge(i)) input(action);
+      }
+      if(mode!=='keyboard')this.deleteStartedAt=null;
     }
     gp.buttons.forEach((b,i)=>this.buttonStates[i]=b.pressed);
   }
@@ -892,7 +917,7 @@ window.addEventListener('keydown',event=>{
   if(event.key==='Tab')return;
   if(event.key==='Enter' && event.target?.tagName==='BUTTON')return; // Native button activation.
   if(mode==='pin'&&/^\d$/.test(event.key)){if(pin.length<8){window.uiSounds?.play('right');pin+=event.key;}renderPin();return;}
-  if(mode==='keyboard'&&event.key.length===1){if(editText.length<4096)editText+=event.key;renderKeyboard();return;}
+  if(mode==='keyboard'&&event.key.length===1){if(editText.length<editTextLimit())editText+=event.key;renderKeyboard();return;}
   if(event.key==='Escape'&&mode==='library'&&!discView){event.preventDefault();openGuide();return;}
   const action={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',a:'left',A:'left',d:'right',D:'right',w:'up',W:'up',s:'down',S:'down',PageUp:'lt',PageDown:'rt',q:'lt',Q:'lt',e:'rt',E:'rt',Enter:'a',Backspace:'x',x:'x',X:'x',y:'y',Y:'y',Escape:'b'}[event.key];if(action){event.preventDefault();input(action);}
 });
@@ -958,7 +983,7 @@ async function endWizard(){
   try{await api.wizardEnd();}catch(error){status(error.message);}
   if(wizardRerun)api.lockAdmin().catch(()=>{});
   wizardRun=null;
-  try{const library=await api.getLibrary();gamesList=library.games;xeniaReady=library.xenia_ready!==false;}catch{/* the library stays as it was */}
+  try{const library=await api.getLibrary();gamesList=library.games;hiddenGamesList=library.hidden_games||[];xeniaReady=library.xenia_ready!==false;}catch{/* the library stays as it was */}
   showSectionColumn();renderCarousel();
 }
 async function startWizard(rerun=false){
@@ -985,7 +1010,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   try{bootState=await api.getTheme();applyTheme(bootState);}catch(error){status(`Theme unavailable: ${error.message}`);}
   playBoot(bootState);
   try{for(const notice of await api.takeNotices())uiNotices.post(notice);}catch{/* no notices is fine */}
-  try{const library=await api.getLibrary();gamesList=library.games;xeniaReady=library.xenia_ready!==false;cm.mode=library.auto_cover_source||'launchbox';status(library.error);renderCarousel();}catch(error){status(error.message);renderCarousel();}
+  try{const library=await api.getLibrary();gamesList=library.games;hiddenGamesList=library.hidden_games||[];xeniaReady=library.xenia_ready!==false;cm.mode=library.auto_cover_source||'launchbox';status(library.error);renderCarousel();}catch(error){status(error.message);renderCarousel();}
   try{wizardPending=!!(await api.wizardState()).first_run;}catch{/* an old main process: no wizard */}
   maybeStartWizard();
   new GamepadWheelController();

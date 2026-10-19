@@ -57,6 +57,25 @@ test('PIN protection defaults on, can be disabled in-session and reenabled with 
   await assert.rejects(h.invoke('admin:unlock',''),/Incorrect PIN/);
   await h.invoke('admin:unlock','1234');assert.equal((await h.invoke('admin:settings')).admin_pin_required,true);
 });
+test('hiding games requires Xenia access, persists across scans, and can be undone',async()=>{
+  const h=await mainHarness();
+  assert.deepEqual(Array.from((await h.invoke('library:get')).games,game=>game.id),['test-game']);
+  assert.deepEqual(Array.from((await h.invoke('library:get')).hidden_games),[]);
+  await assert.rejects(h.invoke('xenia:game-hidden','test-game',true),/session expired/);
+  await assert.rejects(h.untrusted('xenia:game-hidden','test-game',true),/Untrusted/);
+  await h.invoke('admin:unlock','1234','xenia');
+  await assert.rejects(h.invoke('xenia:game-hidden','missing',true),/Unknown game/);
+  await assert.rejects(h.invoke('xenia:game-hidden','test-game','yes'),/Invalid hidden-game setting/);
+  const hidden=await h.invoke('xenia:game-hidden','test-game',true);
+  assert.deepEqual(Array.from(hidden.games),[]);
+  assert.equal(hidden.hidden_games[0].id,'test-game');
+  assert.equal(hidden.hidden_games[0].hidden,true);
+  const scanned=await h.invoke('xenia:roms-rescan');
+  assert.deepEqual(Array.from(scanned),[],'rescans do not make hidden games visible');
+  const shown=await h.invoke('xenia:game-hidden','test-game',false);
+  assert.equal(shown.games[0].id,'test-game');
+  assert.deepEqual(Array.from(shown.hidden_games),[]);
+});
 test('native pickers require PIN and trusted IPC, constrain picker type and preserve cancel', async () => {
   const h = await mainHarness();
   await assert.rejects(h.invoke('covers:search', 'test-game', 'xenia-manager'), /session expired/);
@@ -627,6 +646,9 @@ test('LaunchBox through the cover manager: download once, then search, preview a
   await assert.rejects(h.invoke('covers:prepare', 'xenia-manager'), /needs no download/);
   const ready = await h.invoke('covers:prepare', 'launchbox'); assert.deepEqual([ready.id, ready.ready, ready.games], ['launchbox', true, 1]);
   const found = await h.invoke('covers:search', 'test-game', 'launchbox'); assert.deepEqual([found[0].key, found[0].title], ['77', 'Test Game']);
+  const manual = await h.invoke('covers:search', 'test-game', 'launchbox', '  test game  '); assert.deepEqual([manual[0].key, manual[0].title], ['77', 'Test Game'], 'a supplied LaunchBox query is trimmed and searched');
+  for (const query of ['', '  ', 'x'.repeat(121), 123]) await assert.rejects(h.invoke('covers:search', 'test-game', 'launchbox', query), /Invalid LaunchBox search text/);
+  await assert.rejects(h.invoke('covers:search', 'test-game', 'xenia-manager', 'Test Game'), /Invalid LaunchBox search text/);
   assert.deepEqual((await h.invoke('covers:pictures', 'test-game', 'launchbox', '77')).map(item => item.key), ['front-na.jpg', 'box3d.png']);
   await assert.rejects(h.invoke('covers:pictures', 'test-game', 'launchbox', '999'), /Unknown LaunchBox game/);
   for (const bad of ['../etc/passwd', 'other.jpg', 'https://evil.example/x.jpg']) await assert.rejects(h.invoke('covers:preview', 'test-game', 'launchbox', '77', bad), /Unknown LaunchBox picture/);

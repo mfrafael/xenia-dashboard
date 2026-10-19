@@ -232,7 +232,7 @@ Eu não tenho DLC nem title update reais para testar; confirmar que o Xenia **ca
 - [ ] Y num jogo: o menu agora tem **Game settings, DLC and updates, Change cover, Patches, Game details**.
 - [ ] **Change cover › Choose an image from this computer** abre o seletor de arquivos (JPEG, PNG ou WebP). Escolher uma imagem troca **só a capa desse jogo** (confira na biblioteca); os outros jogos não mudam. Cancelar o seletor não muda nada.
 - [ ] Escolher um arquivo que não é imagem (ex.: um `.txt` renomeado para `.png`) mostra "Choose a JPEG, PNG or WebP image".
-- [ ] **Search the online catalogue** lista os jogos parecidos; escolher um baixa a capa só desse jogo. B volta à tela anterior.
+- [ ] **Search LaunchBox for: [game name]** aparece nos resultados de LaunchBox; editar o texto pesquisa por outro título (inclusive após não encontrar resultados). Escolher um jogo baixa a capa só desse jogo; B cancela a edição ou volta uma tela.
 - [ ] Reiniciar o app mantém a capa escolhida.
 - [ ] Conhecido: se o jogo tem uma imagem ao lado da ROM (capa "sidecar"), um novo escaneamento completo pode voltar para ela.
 **Windows (não testável por mim)**
@@ -293,9 +293,9 @@ Para ver como um usuário novo, sem tocar nos seus dados: abra o app com uma pas
 - [ ] A janela volta ao tamanho e à posição em que estava ao voltar de tela cheia e ao reabrir o app.
 - [ ] Esticar a janela em qualquer proporção: tudo acompanha; os botões A/B/X/Y ficam redondos em todas as views; na Blades os nomes das blades à direita ficam centrados nas faixas, em tela cheia e em janela estreita.
 - [ ] Teclado: **W A S D** movem como as setas, **Q / E** trocam de seção (LT / RT), **Enter** é A e **Esc** é B. Digitando um PIN, um texto ou uma busca, essas letras só escrevem.
+- [ ] Ao editar uma busca com controle, manter **X** pressionado apaga caracteres repetidamente depois de uma breve pausa; soltar para parar.
 - [ ] **Game covers** na ordem: Source, Update … data, Download covers, Download missing covers, Rescan, Return. No Install Wizard, **Download covers** faz tudo no próprio cartão (dados da fonte, depois as capas), mostra o progresso e termina em **Continue**; sem rede mostra o erro com **Try again** e **Skip this step**.
 - [ ] Sem Xenia configurado (passo pulado no wizard): *Xenia Settings › System / Profiles / Advanced* abre a janela **Xenia is not set up** com **Set up Xenia** (vai para o Updates) e **Not now**. Nenhuma tela de PIN aparece numa instalação sem PIN.
 - [ ] Logo depois de instalar um Xenia que ainda não rodou, abre a janela **Start Xenia once**; abrir Profiles/Advanced antes de rodar o Xenia mostra a mesma janela. Depois de rodar o Xenia uma vez, nada disso aparece.
 - [ ] *Xenia Settings › Updates*: checa sozinho ao abrir e ao trocar de channel; não há botão *Check for updates*. A linha abaixo de *Channel* diz **Checking for updates…**, **Up to date ✓** (A checa de novo), **Update to …**, **Install …** (primeira instalação) ou **Could not check · try again**.
 - [ ] A linha do tempo do seletor de View (wizard e *View*) tem os círculos alinhados na linha, o do foco maior e centralizado, e os nomes na mesma altura.
-

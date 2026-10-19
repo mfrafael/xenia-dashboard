@@ -41,6 +41,24 @@ test('SELECT or the Guide button asks to exit; Start and the old admin chord do 
   gp.buttons[0].pressed=true;gp.buttons[15].pressed=true;context.engine.handleInput(gp,2500);
   assert.deepEqual(actions,['a','right','a']);
 });
+test('holding controller X repeats delete only while editing text', () => {
+  const actions=[];
+  const context=vm.createContext({window:{electronAPI:{},addEventListener(){}},document:{getElementById(){return {}; }},requestAnimationFrame(){},navigator:{}});
+  loadDashboard(vm,context,'\ninput=action=>actions.push(action);globalThis.engine=new GamepadWheelController();mode="keyboard";');
+  context.actions=actions;
+  const gp={buttons:Array.from({length:17},()=>({pressed:false})),axes:[0,0]};
+  gp.buttons[2].pressed=true;context.engine.handleInput(gp,1000);
+  context.engine.handleInput(gp,1300);
+  assert.deepEqual(actions,['x'],'delete acts immediately and waits before repeating');
+  context.engine.handleInput(gp,1400);
+  context.engine.handleInput(gp,1480);
+  assert.deepEqual(actions,['x','x','x'],'held delete repeats at a usable rate');
+  gp.buttons[2].pressed=false;context.engine.handleInput(gp,1560);
+  context.engine.handleInput(gp,1700);
+  assert.deepEqual(actions,['x','x','x'],'releasing stops repeats');
+  vm.runInContext('mode="covers"',context);gp.buttons[2].pressed=true;context.engine.handleInput(gp,1800);context.engine.handleInput(gp,2300);
+  assert.deepEqual(actions,['x','x','x','x'],'X keeps its one-press behavior outside text editing');
+});
 test('native field editing preserves cursor and Tab; Enter accepts and Escape discards', () => {
   const actions=[], listeners={};
   const context=vm.createContext({ actions, window:{electronAPI:{},addEventListener(name,callback){listeners[name]=callback;}},document:{getElementById(){return {};}},requestAnimationFrame(){},navigator:{} });

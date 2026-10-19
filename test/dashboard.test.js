@@ -552,16 +552,18 @@ test('the Updates screen offers the right rows for each situation and never swit
   assert.equal(run('mode'), 'dialog'); assert.equal(byId['guide-title'].textContent, 'Start Xenia once');
 });
 
-test('the game menu lists Game settings, DLC and updates, Patches and Game details by name', async () => {
+test('the game menu offers game settings, hide/show, content, patches and details by name', async () => {
   const { run, byId } = guideHarness();
   const calls = [];
   run(`gameTarget={game:{id:'g',title:'Gears',title_id:'4D5307D5'},fromLibrary:true};
     openXenia=id=>globalThis.called='settings:'+id;openOptimized=()=>globalThis.called='optimized';openContent=()=>globalThis.called='content';openCoverManager=()=>globalThis.called='cover';openPatches=()=>globalThis.called='patches';openGameInfo=()=>globalThis.called='info';mode='game-menu'`);
-  assert.deepEqual(Array.from(run('gameMenuEntries().map(entry=>entry.label)')), ['Game settings', 'DLC and updates', 'Change cover', 'Patches', 'Game details', 'Return to games']);
+  assert.deepEqual(Array.from(run('gameMenuEntries().map(entry=>entry.label)')), ['Game settings', 'DLC and updates', 'Change cover', 'Patches', 'Game details', 'Hide game', 'Return to games']);
   for (const [index, expected] of [[0, 'settings:g'], [1, 'content'], [2, 'cover'], [3, 'patches'], [4, 'info']]) { run(`selected=${index};activateGameMenu()`); assert.equal(run('called'), expected); }
-  run("gameTarget.game.title_id='';called='';selected=1;activateGameMenu()"); assert.equal(run('called'), '', 'no title ID: nothing opens');
+  run("gameTarget.game.title_id='';called='';selected=1;activateGameMenu()"); assert.equal(run('called'), '', 'no title ID: game settings do not open');
   assert.match(byId['modal-error'].textContent, /no title ID/);
   run("called='';selected=2;activateGameMenu()"); assert.equal(run('called'), 'cover', 'a cover needs no title ID');
+  run("gameTarget.game.title_id='';selected=5;activateGameMenu()"); assert.equal(run('mode'), 'game-menu', 'hide/show remains available without a title ID');
+  run("gameTarget.game.hidden=true");assert.equal(run('gameMenuEntries()[5].label'),'Show game');
   run("gameTarget.game.title_id='4D5307D5';openXenia=async()=>{globalThis.called='reopened'};highlight=()=>{};mode='optimized';selected=0");
   assert.equal(run("xeniaBack()"), true, 'B on the optimized screen goes back to the game settings');
   assert.equal(run('called'), 'reopened');
@@ -586,17 +588,30 @@ test('the cover manager shows the same flow for every source and one bulk screen
   const { run } = guideHarness();
   const sources = [{ id: 'xenia-manager', label: 'Xenia Manager', needs_download: false, ready: true }, { id: 'launchbox', label: 'LaunchBox', needs_download: true, ready: false, built: 0, games: 0 }];
   const labels = () => Array.from(run('coverRows().map(row=>row.label)'));
-  run(`cm={...cm,context:{game:{id:'g',title:'Gears'},leave(){}},sources:${JSON.stringify(sources)},stage:'home',source:null,games:[],pictures:[],game:null}`);
+  run(`cm={...cm,context:{game:{id:'g',title:'Gears'},leave(){}},sources:${JSON.stringify(sources)},stage:'home',source:null,games:[],pictures:[],game:null,query:'Gears'}`);
   assert.deepEqual(labels(), ['Choose an image from this computer', 'Xenia Manager covers (online)', 'LaunchBox covers (online)', 'Return to game options'], 'a file and every source, in one list');
   run(`cm.stage='setup';cm.source=cm.sources[1]`); assert.deepEqual(labels(), ['Download LaunchBox data', 'Return']);
-  run(`cm.stage='games';cm.games=[{key:'1',title:'Gears of War',pictures:5}]`); assert.deepEqual(labels(), ['Gears of War (5)', 'Update LaunchBox data', 'Return'], 'a source with data to download can refresh it');
-  run(`cm.source=cm.sources[0]`); assert.deepEqual(labels(), ['Gears of War (5)', 'Return'], 'an online source has nothing to update');
+  run(`cm.stage='games';cm.source=cm.sources[1];cm.games=[{key:'1',title:'Gears of War',pictures:5}]`); assert.deepEqual(labels(), ['Search LaunchBox for: Gears', 'Gears of War (5)', 'Update LaunchBox data', 'Return'], 'LaunchBox exposes editable search text and can refresh its data');
+  run(`cm.source=cm.sources[0]`); assert.deepEqual(labels(), ['Gears of War (5)', 'Return'], 'Xenia Manager has no LaunchBox query row or data update');
   run(`cm.stage='pictures';cm.pictures=[{key:'a',label:'Front · North America'},{key:'b',label:'3D box'}]`); assert.deepEqual(labels(), ['Front · North America', '3D box', 'Back']);
   run(`cm.context={game:null,leave(){}};cm.stage='bulk';cm.mode='xenia-manager'`);
   assert.deepEqual(labels(), ['Source: Xenia Manager', 'Download covers', 'Download missing covers', 'Rescan local cover images', 'Return'], 'Source first, the downloads next, the local scan last; no per-game search or replace: that is Change cover');
   run(`cm.mode='launchbox'`); assert.deepEqual(labels(), ['Source: LaunchBox', 'Update LaunchBox data', 'Download covers', 'Download missing covers', 'Rescan local cover images', 'Return'], 'the data of the source sits right under it');
   run(`cm.mode='both'`); assert.deepEqual(labels(), ['Source: LaunchBox, then Xenia Manager', 'Update LaunchBox data', 'Download covers', 'Download missing covers', 'Rescan local cover images', 'Return']);
   run(`cm.sources[1].ready=true`); assert.deepEqual(labels(), ['Source: LaunchBox, then Xenia Manager', 'Update LaunchBox data', 'Download covers', 'Download missing covers', 'Rescan local cover images', 'Return'], 'already downloaded: the row stays, to refresh it');
+});
+test('the per-game LaunchBox search row opens the text editor and searches with its edited query', async () => {
+  const { run } = guideHarness();
+  run(`globalThis.edits=[];globalThis.searched=null;globalThis.rendered=null;
+    editTextEntry=action=>edits.push(action);
+    renderCover=index=>globalThis.rendered=index;
+    api.searchCovers=async(gameId,source,query)=>{globalThis.searched=[gameId,source,query];return [{key:'77',title:'Halo 3',pictures:2}]};
+    cm={...cm,context:{game:{id:'g',title:'Halo'}},source:{id:'launchbox'},stage:'games',query:'Halo',games:[]};selected=0;`);
+  await run('activateCover()');
+  assert.deepEqual(Array.from(run('[edits[0].title,edits[0].label,edits[0].value]')), ['Search LaunchBox', 'Game name', 'Halo']);
+  await run("edits[0].onDone(' Halo 3 ')");
+  assert.deepEqual(Array.from(run('searched')), ['g', 'launchbox', 'Halo 3']);
+  assert.equal(run('cm.query'), 'Halo 3'); assert.equal(run('cm.games[0].title'), 'Halo 3'); assert.equal(run('rendered'), 0);
 });
 test('B steps back through the cover manager one level at a time and leaves to where it was opened from', () => {
   const { run } = guideHarness();

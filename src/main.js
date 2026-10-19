@@ -202,12 +202,21 @@ function lockedSections(){return Array.isArray(library.locked_sections)?SECTION_
 function checkSection(section){if(section===undefined||section===null)return '*';if(!SECTION_IDS.includes(section))throw Error('Unknown section');return section;}
 function pinRequiredFor(scope){if(wizardSession&&SECTION_IDS.includes(scope))return false;return library.admin_pin_required!==false&&(scope==='*'||lockedSections().includes(scope));}
 function requireAdmin(section) { if (!(sessionValid('*') || (section && sessionValid(section)))) throw new Error('Admin session expired. Open administrator access again.'); }
-function publicGames() { return groupGames(library.games).map(g=>{
+function publicGameList(games) { return groupGames(games).map(g=>{
   const art=g.discs?.find(d=>d.cover_art_path)||g;
   const cover=art.cover_art_path?`kratos-art://cover/${art.id}?v=${coverRevision}`:null;
-  return {id:g.id,title:g.title,...(g.title_id?{title_id:g.title_id}:{}),uses_fallback_art:!cover,cover_art_path:cover,
+  return {id:g.id,title:g.title,...(g.title_id?{title_id:g.title_id}:{}),...(g.hidden?{hidden:true}:{}),uses_fallback_art:!cover,cover_art_path:cover,
     ...(g.discs?{discs:g.discs.map(d=>({id:d.id,number:d.disc_number,title:`Disc ${d.disc_number}`,uses_fallback_art:!cover,cover_art_path:cover}))}:{})};
 }); }
+function publicGames() { return publicGameList(library.games.filter(game=>game.hidden!==true)); }
+function publicHiddenGames() { return publicGameList(library.games.filter(game=>game.hidden===true)); }
+function preserveHiddenGames(games) {
+  const hidden=new Set([
+    ...(Array.isArray(library.hidden_game_ids)?library.hidden_game_ids.filter(id=>typeof id==='string'):[]),
+    ...library.games.filter(game=>game.hidden===true).map(game=>game.id)
+  ]);
+  return games.map(game=>hidden.has(game.id)?{...game,hidden:true}:game);
+}
 const validBounds=b=>b&&['x','y','width','height'].every(k=>Number.isInteger(b[k]))&&b.width>=960&&b.height>=540&&b.width<=16384&&b.height<=16384;
 const windowedBounds=()=>validBounds(library?.window_bounds)?library.window_bounds:{width:1280,height:720};
 async function setWindowMode(mode){
@@ -319,7 +328,7 @@ else {
       scanError = failed.length ? `Could not read: ${failed.join(', ')}` : '';
       return games;
     };
-    try { library.games = await scanFolders(); await scanner.saveLibrary(libraryFile, library); } catch (error) { scanError = `Scan failed: ${error.message}`; }
+    try { library.games = preserveHiddenGames(await scanFolders()); await scanner.saveLibrary(libraryFile, library); } catch (error) { scanError = `Scan failed: ${error.message}`; }
     protocol.handle('nxe-app',async request=>{
       try{
         const url=new URL(request.url),file=url.pathname.slice(1);
@@ -355,8 +364,20 @@ else {
       }catch{return new Response('Not found',{status:404});}
     });
     handle('notices:take', () => { noticesReady = true; return notices.splice(0); });
-    handle('library:get', () => ({ games: publicGames(), error: scanError, xenia_ready: !!library.xenia_executable, auto_cover_source: Object.hasOwn(coverSourcesModule.AUTO_MODES, library.auto_cover_source) ? library.auto_cover_source : 'launchbox' }));
+    handle('library:get', () => ({ games: publicGames(), hidden_games: publicHiddenGames(), error: scanError, xenia_ready: !!library.xenia_executable, auto_cover_source: Object.hasOwn(coverSourcesModule.AUTO_MODES, library.auto_cover_source) ? library.auto_cover_source : 'launchbox' }));
     handle('game:launch', launch);
+    handle('xenia:game-hidden',(gameId,hidden)=>serialized(async()=>{
+      requireAdmin('xenia');
+      if(typeof gameId!=='string'||typeof hidden!=='boolean')throw Error('Invalid hidden-game setting');
+      const game=groupGames(library.games).find(item=>item.id===gameId);
+      if(!game)throw Error('Unknown game');
+      const ids=new Set(game.discs?game.discs.map(disc=>disc.id):[game.id]);
+      const hiddenIds=new Set(Array.isArray(library.hidden_game_ids)?library.hidden_game_ids.filter(id=>typeof id==='string'):[]);
+      for(const id of ids){if(hidden)hiddenIds.add(id);else hiddenIds.delete(id);}
+      const next={...library,hidden_game_ids:[...hiddenIds],games:library.games.map(item=>ids.has(item.id)?{...item,hidden}:item)};
+      await scanner.saveLibrary(libraryFile,next);library=next;
+      return {games:publicGames(),hidden_games:publicHiddenGames()};
+    }));
     handle('theme:get',()=>themeState(importedTheme));
     handle('admin:access',section=>({pin_required:pinRequiredFor(checkSection(section))}));
     handle('admin:pin-protection',required=>serialized(async()=>{
@@ -436,7 +457,7 @@ else {
     }));
     handle('admin:cover-rescan',()=>serialized(async()=>{
       requireAdmin('dashboard');const games=await scanFolders();requireAdmin('dashboard');
-      const next={...library,games};await scanner.saveLibrary(libraryFile,next);library=next;coverRevision++;return publicGames();
+      const next={...library,games:preserveHiddenGames(games)};await scanner.saveLibrary(libraryFile,next);library=next;coverRevision++;return publicGames();
     }));
     // The Folders screen: ROM folders, where the dashboard keeps Xenia, and Xenia's own content folder (read from its config).
     const foldersView = async () => {
@@ -470,7 +491,7 @@ else {
     handle('xenia:roms-rescan', () => serialized(async () => {
       requireAdmin('xenia');
       const games = await scanFolders();
-      requireAdmin('xenia'); const next = { ...library, games }; await scanner.saveLibrary(libraryFile, next); library = next; coverRevision++; return publicGames();
+      requireAdmin('xenia'); const next = { ...library, games:preserveHiddenGames(games) }; await scanner.saveLibrary(libraryFile, next); library = next; coverRevision++; return publicGames();
     }));
     handle('xenia:settings',async gameId=>{requireAdmin('xenia');const view=xeniaView(await xeniaFiles(gameId));requireAdmin('xenia');return view;});
     handle('xenia:set',(gameId,id,value)=>serialized(async()=>{
@@ -632,7 +653,12 @@ else {
       requireAnyAdmin();const source=coverSource(sourceId);
       return {id:source.id,label:source.label,needs_download:source.needsDownload,...await source.prepare(progress=>sendCoverProgress({kind:'download',...progress}))};
     }));
-    handle('covers:search',(gameId,sourceId)=>{requireAdmin('xenia');return coverSource(sourceId).search(coverTitle(coverGame(gameId)));});
+    handle('covers:search',(gameId,sourceId,query)=>{
+      requireAdmin('xenia');const source=coverSource(sourceId),game=coverGame(gameId);
+      if(query===undefined)return source.search(coverTitle(game));
+      if(sourceId!=='launchbox'||typeof query!=='string'||!query.trim()||query.trim().length>120)throw Error('Invalid LaunchBox search text');
+      return source.search(query.trim());
+    });
     handle('covers:pictures',(gameId,sourceId,key)=>{requireAdmin('xenia');coverGame(gameId);return coverSource(sourceId).pictures(key);});
     handle('covers:preview',async(gameId,sourceId,key,picture)=>{
       requireAdmin('xenia');coverGame(gameId);
