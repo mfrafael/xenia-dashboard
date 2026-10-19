@@ -3,6 +3,18 @@
 All notable changes to Xenia Dashboard. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-10-19
+
+Manual cover search and hidden games, contributed by [@hernjon](https://github.com/hernjon) (#2). Thank you!
+
+### Added
+- **Manual cover search.** *Change cover › LaunchBox › Search LaunchBox for…* lets you search by another game name, to fix or replace a cover.
+- **Hide games.** *Hide game* in a game's menu keeps it out of the library; *Xenia Settings › Games* shows it again.
+- Holding X on the controller keyboard keeps erasing.
+
+### Minor changes
+- **Blades:** the Folders and PIN and locks icons were larger than the others.
+
 ## [1.1.0] - 2026-10-18
 
 Windowed mode, improved keyboard support, and an enhanced Install Wizard.
