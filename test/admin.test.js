@@ -72,6 +72,10 @@ test('hiding games requires Xenia access, persists across scans, and can be undo
   assert.equal(hidden.hidden_games[0].hidden,true);
   const scanned=await h.invoke('xenia:roms-rescan');
   assert.deepEqual(Array.from(scanned),[],'rescans do not make hidden games visible');
+  await h.invoke('admin:unlock','1234','dashboard');
+  const covers=await h.invoke('admin:cover-rescan');
+  assert.deepEqual(Array.from(covers),[],'a cover rescan does not make hidden games visible either');
+  assert.equal((await h.invoke('library:get')).hidden_games[0].id,'test-game','the list of ids is the only thing that says a game is hidden');
   const shown=await h.invoke('xenia:game-hidden','test-game',false);
   assert.equal(shown.games[0].id,'test-game');
   assert.deepEqual(Array.from(shown.hidden_games),[]);

@@ -1,7 +1,7 @@
 {
   "name": "xenia-dashboard",
   "desktopName": "xenia-dashboard.desktop",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Xenia Dashboard — a controller-first, Xbox 360-style dashboard that also configures the Xenia emulator (unofficial)",
   "main": "src/main.js",
   "author": "mfrafael",
