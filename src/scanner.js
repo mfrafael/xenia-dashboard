@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const xboxTitle = require('./xbox-title');
-const extensions = new Set(['.iso', '.xex', '.god']);
+const extensions = new Set(['.iso', '.xex', '.god', '.zar']);
 function cleanTitle(name) {
   return path.basename(name, path.extname(name)).replace(/\[[^\]]*\]|\([^)]*\)/g, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_.-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Untitled Game';
 }
