@@ -18,6 +18,20 @@ test('recursive scan, case-insensitive covers, stable IDs and missing directorie
   assert.deepEqual(await scanner.scanDirectory(root),games);
   await assert.rejects(scanner.scanDirectory(path.join(root,'missing')));
 });
+test('ROM folder scans ignore executables; explicitly selected executables get adjacent covers without Xbox metadata', async t => {
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'kratos-exe-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  await fs.writeFile(path.join(root,'Lost Odyssey Recomp.exe'),'not an Xbox package');
+  await fs.writeFile(path.join(root,'lost odyssey recomp.PNG'),'cover');
+  assert.deepEqual(await scanner.scanDirectory(root),[],'unselected executables are not discovered in ROM folders');
+  const [game]=await scanner.scanExecutables([path.join(root,'Lost Odyssey Recomp.exe')]);
+  assert.equal(game.title,'Lost Odyssey Recomp');
+  assert.equal(game.cover_art_path,path.join(root,'lost odyssey recomp.PNG'));
+  assert.equal(game.uses_fallback_art,false);
+  assert.equal(game.title_id,undefined);
+  assert.deepEqual(await scanner.scanExecutables([path.join(root,'Lost Odyssey Recomp.exe')]),[game]);
+  await assert.rejects(scanner.scanExecutables([path.join(root,'lost odyssey recomp.PNG')]),/Invalid executable game path/);
+});
 test('extensionless STFS packages are games and carry title metadata', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'kratos-test-'));
   t.after(() => fs.rm(root, { recursive:true, force:true }));

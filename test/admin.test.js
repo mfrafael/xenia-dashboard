@@ -9,7 +9,7 @@ const scanner = require('../src/scanner');
 const { EventEmitter } = require('node:events');
 
 async function mainHarness(withTheme=false,coverMode='none',gameExtra={},options={}) {
-  const handlers = new Map(), calls = [], events = new Map(), windowEvents = new Map(), windowCalls = [], routes = new Map();
+  const handlers = new Map(), calls = [], events = new Map(), windowEvents = new Map(), windowCalls = [], routes = new Map(), spawnCalls = [], accessCalls = [];
   const emulator = new EventEmitter();
   const game = { id: 'test-game', title: 'Test Game', rom_path: 'C:\\Games\\Test.iso', ...gameExtra };
   if(coverMode!=='none'){game.uses_fallback_art=false;game.cover_art_path=coverMode==='cached'?path.join(__dirname,'covers','test-game.jpg'):path.join(__dirname,'sidecar.jpg');}
@@ -33,7 +33,7 @@ async function mainHarness(withTheme=false,coverMode='none',gameExtra={},options
     }
   };
   const context = vm.createContext({
-    require: name => name === './xenia-releases' ? { ...require('../src/xenia-releases'), httpsFetcher: (url, init) => routes.has(url) ? Promise.resolve(routes.get(url)(url, init)) : Promise.reject(new Error(`unrouted ${url}`)) } : name === 'electron' ? electron : name === 'node:child_process' ? { spawn: () => emulator } : name === 'node:fs/promises' ? { access: async () => {},mkdir:async()=>{},writeFile:async()=>{},rename:async()=>{},unlink:async()=>{},readdir:(...args)=>require('node:fs/promises').readdir(...args) } : name==='./nxe'?{...require('../src/nxe'),loadTheme:async()=>({directory:__dirname,manifest:{version:1,assets:{},backgrounds:[{id:'theme-test',label:'Test'}],inventory:[],sounds:{},notes:[]},selected:'theme-test',audio:{volume:.5,muted:options.legacyMuted===true}})}:name === './scanner' ? { ...scanner, loadLibrary: async () => ({ rom_directory: options.romDirectory ?? '', rom_directories: options.romDirectory ? [options.romDirectory] : [], xenia_executable: options.executable ?? 'C:\\Xenia\\xenia.exe', games: [game], admin_credential: scanner.hashPin('1234'), ...(options.library || {}) }), scanDirectory: async () => [game], scanDirectories: async () => [game], saveLibrary: async () => {} } : require(name.startsWith('./') ? '../src/' + name.slice(2) : name),
+    require: name => name === './xenia-releases' ? { ...require('../src/xenia-releases'), httpsFetcher: (url, init) => routes.has(url) ? Promise.resolve(routes.get(url)(url, init)) : Promise.reject(new Error(`unrouted ${url}`)) } : name === 'electron' ? electron : name === 'node:child_process' ? { spawn: (...args) => { spawnCalls.push(args); return emulator; } } : name === 'node:fs/promises' ? { access: async file => { accessCalls.push(file); if(file===''||options.missingPaths?.includes(file))throw Object.assign(Error('ENOENT'),{code:'ENOENT'}); },mkdir:async()=>{},writeFile:async()=>{},rename:async()=>{},unlink:async()=>{},readdir:(...args)=>require('node:fs/promises').readdir(...args) } : name==='./nxe'?{...require('../src/nxe'),loadTheme:async()=>({directory:__dirname,manifest:{version:1,assets:{},backgrounds:[{id:'theme-test',label:'Test'}],inventory:[],sounds:{},notes:[]},selected:'theme-test',audio:{volume:.5,muted:options.legacyMuted===true}})}:name === './scanner' ? { ...scanner, loadLibrary: async () => ({ rom_directory: options.romDirectory ?? '', rom_directories: options.romDirectory ? [options.romDirectory] : [], xenia_executable: options.executable ?? 'C:\\Xenia\\xenia.exe', games: [game], admin_credential: scanner.hashPin('1234'), ...(options.library || {}) }), scanDirectory: async () => [game], scanDirectories: async () => [game], saveLibrary: async () => {} } : require(name.startsWith('./') ? '../src/' + name.slice(2) : name),
     __dirname: path.join(__dirname, '..', 'src'), console: { info() {}, warn() {}, error() {} }, process: { platform: options.platform || 'win32', on() {} }, Date: { now: () => now }, URL, Response
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..','src','main.js'), 'utf8'), context);
@@ -42,7 +42,7 @@ async function mainHarness(withTheme=false,coverMode='none',gameExtra={},options
   for (let attempts = 0; !window && attempts < 1000; attempts++) await new Promise(resolve => setTimeout(resolve, 5));
   assert.ok(window, 'main.js never created the window');
   const caller = () => ({ sender: window.webContents, senderFrame: window.webContents.mainFrame });
-  return { calls, events, windowEvents, routes, emulator, windowCalls,hasHandler:name=>handlers.has(name), invoke: (name, ...args) => handlers.get(name)(caller(), ...args), untrusted: (name, ...args) => handlers.get(name)({ sender: {}, senderFrame: {} }, ...args), setTime: value => { now = value; }, setResult: value => { dialogResult = value; } };
+  return { calls, events, windowEvents, routes, emulator, windowCalls,spawnCalls,accessCalls,hasHandler:name=>handlers.has(name), invoke: (name, ...args) => handlers.get(name)(caller(), ...args), untrusted: (name, ...args) => handlers.get(name)({ sender: {}, senderFrame: {} }, ...args), setTime: value => { now = value; }, setResult: value => { dialogResult = value; } };
 }
 test('PIN protection defaults on, can be disabled in-session and reenabled with the saved PIN',async()=>{
   const h=await mainHarness();
@@ -88,7 +88,7 @@ test('native pickers require PIN and trusted IPC, constrain picker type and pres
   await assert.rejects(h.invoke('admin:sound','volume',1), /session expired/);
   await assert.rejects(h.invoke('covers:apply', 'test-game', 'xenia-manager', '4D5307E6', 'boxart'), /session expired/);
   await assert.rejects(h.untrusted('covers:search', 'test-game', 'xenia-manager'), /Untrusted/);
-  for (const call of [['xenia:roms-add'], ['xenia:roms-remove', '/roms'], ['xenia:roms-rescan'], ['xenia:updates-own']]) {
+  for (const call of [['xenia:roms-add'], ['xenia:roms-remove', '/roms'], ['xenia:exe-games-add'], ['xenia:exe-games-remove','/games/game.exe'], ['xenia:roms-rescan'], ['xenia:updates-own']]) {
     await assert.rejects(h.invoke(...call), /session expired/);
     await assert.rejects(h.untrusted(...call), /Untrusted/);
   }
@@ -102,6 +102,16 @@ test('native pickers require PIN and trusted IPC, constrain picker type and pres
   h.setResult({ canceled: true, filePaths: [] });
   assert.deepEqual(Array.from((await h.invoke('xenia:roms-add')).folders), ['/games/a', '/games/b'], 'cancelling changes nothing');
   assert.deepEqual(Array.from((await h.invoke('admin:settings')).rom_directories), ['/games/a', '/games/b']);
+  assert.deepEqual(Array.from((await h.invoke('admin:settings')).exe_games),[]);
+  h.setResult({canceled:false,filePaths:['/games/recomp.exe','/games/helper.exe','relative.exe','/games/not-a-game.iso']});
+  const exes=await h.invoke('xenia:exe-games-add');
+  assert.deepEqual(Array.from(exes.files),['/games/recomp.exe','/games/helper.exe']);
+  assert.deepEqual(Array.from(h.calls.at(-1).properties),['openFile','multiSelections','dontAddToRecent']);
+  assert.deepEqual(Array.from(h.calls.at(-1).filters[0].extensions),['exe']);
+  assert.deepEqual(Array.from((await h.invoke('admin:settings')).exe_games),['/games/recomp.exe','/games/helper.exe']);
+  assert.deepEqual(Array.from((await h.invoke('xenia:exe-games-add')).files),['/games/recomp.exe','/games/helper.exe'],'duplicates are not added again');
+  await assert.rejects(h.invoke('xenia:exe-games-remove','/games/missing.exe'),/not in the list/);
+  assert.deepEqual(Array.from((await h.invoke('xenia:exe-games-remove','/games/recomp.exe')).files),['/games/helper.exe']);
   await assert.rejects(h.invoke('xenia:roms-remove', '/nope'), /not in the list/);
   assert.deepEqual(Array.from((await h.invoke('xenia:roms-remove', '/games/a')).folders), ['/games/b']);
   await h.invoke('xenia:roms-rescan');
@@ -122,6 +132,11 @@ test('picker cannot return a path after PIN session expires while it is open', a
   await h.invoke('admin:unlock', '1234', 'xenia');
   h.setResult(() => { h.setTime(1300001); return { canceled: false, filePaths: ['C:\\private'] }; });
   await assert.rejects(h.invoke('xenia:roms-add'), /session expired/);
+});
+test('adding executable games requires the Xenia session through the whole picker',async()=>{
+  const h=await mainHarness();await h.invoke('admin:unlock','1234','xenia');
+  h.setResult(()=>{h.setTime(1300001);return {canceled:false,filePaths:['C:\\Games\\Recomp.exe']};});
+  await assert.rejects(h.invoke('xenia:exe-games-add'),/session expired/);
 });
 test('admin editing allows clipboard shortcuts; kiosk still blocks devtools and modifiers', async () => {
   const h = await mainHarness();
@@ -145,6 +160,19 @@ test('game startup keeps the kiosk fullscreen underneath Xenia; exit restores fo
   assert.deepEqual(h.windowCalls, [['topmost',true],['topmost',false],['state', true], ['restore'], ['show'], ['kiosk', true], ['fullscreen', true], ['focus'], ['state', false]]);
   h.emulator.emit('error', new Error('late error'));
   assert.equal(h.windowCalls.filter(call => call[0] === 'restore').length, 1);
+});
+test('standalone executables launch without Xenia and Linux uses the configured runner',async()=>{
+  const executable=path.join(__dirname,'games','Recompiled Game.exe');
+  const windows=await mainHarness(false,'none',{rom_path:executable},{library:{xenia_executable:''}});
+  await windows.invoke('game:launch','test-game');
+  assert.deepEqual(windows.accessCalls,[executable],'only the selected executable is required to exist');
+  assert.equal(JSON.stringify(windows.spawnCalls[0]),JSON.stringify([executable,[],{shell:false,cwd:path.dirname(executable),stdio:'ignore',windowsHide:false,detached:false}]));
+  windows.emulator.emit('close',0);
+
+  const linux=await mainHarness(false,'none',{rom_path:executable},{platform:'linux',library:{xenia_executable:'',runner:'wine',runner_args:['-windowed'] }});
+  await linux.invoke('game:launch','test-game');
+  assert.equal(JSON.stringify(linux.spawnCalls[0]),JSON.stringify(['wine',['-windowed',executable],{shell:false,cwd:path.dirname(executable),stdio:'ignore',windowsHide:false,detached:true}]));
+  linux.emulator.emit('close',0);
 });
 
 test('rescanning covers needs the Dashboard session and refreshes the library',async()=>{

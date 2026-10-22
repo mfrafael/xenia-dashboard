@@ -99,8 +99,11 @@ Section `kind`s say what the items are (`rail`, `tiles`, `list`), not how they a
 
 ## Launching a game
 
-`launch()` in `src/main.js` starts Xenia with `--fullscreen <game>` (straight into the game, no Xenia menu) and a log of its own
-(`--log_file`, in the app's data folder). Xenia (Edge) does not quit when a game ends with *Return to Arcade*: it goes back to
+`launch()` in `src/main.js` starts Xbox game files through Xenia with `--fullscreen <game>` (straight into the game, no Xenia menu) and a log of its own
+(`--log_file`, in the app's data folder). Standalone `.exe` games run directly, without requiring Xenia; on Linux the configured
+Wine/Proton runner is used unless the runner is set to `native`. They use the same launch handoff and return to the dashboard when
+the executable exits. Only `.exe` files explicitly selected in Xenia Settings › Folders are included; the scanner pairs an adjacent image with each one. The per-game cover manager supports manual LaunchBox name searches.
+Xenia (Edge) does not quit when a game ends with *Return to Arcade*: it goes back to
 its game list and keeps the window open. `title-exit.js` reads that log, and on `KernelState::ExitToDashboard` closes Xenia
 (the whole process group on Linux, so the AppImage runtime and Wine go too) and the dashboard takes the screen back. A jump from
 one title to another inside Xenia does not log that line, so it is left alone.

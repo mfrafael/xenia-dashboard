@@ -413,15 +413,22 @@ function renderGameMenu(){
   buttons(gameMenuEntries().map(entry=>entry.label),'cover-options',activate);
 }
 // The game menu by name, so adding an entry never shifts what the others open.
-function gameMenuEntries(){return [
-  {id:'settings',label:'Game settings',run:()=>openXenia(gameTarget.game.id)},
-  {id:'content',label:'DLC and updates',run:()=>openContent()},
-  {id:'cover',label:'Change cover',run:()=>openCoverManager({game:gameTarget.game,leave:()=>backToGameMenu('cover')})},
-  {id:'patches',label:'Patches',run:()=>openPatches()},
-  {id:'info',label:'Game details',run:()=>openGameInfo()},
-  {id:'hidden',label:gameTarget.game.hidden?'Show game':'Hide game',run:()=>toggleGameHidden()},
-  {id:'back',label:gameTarget.fromLibrary?'Return to games':'Return to game list',run:()=>gameTarget.fromLibrary?closeModal():renderGameList()}
-];}
+function gameMenuEntries(){
+  const game=gameTarget.game;
+  return [
+    ...(game.title_id?[
+      {id:'settings',label:'Game settings',run:()=>openXenia(game.id)},
+      {id:'content',label:'DLC and updates',run:()=>openContent()}
+    ]:[]),
+    {id:'cover',label:'Change cover',run:()=>openCoverManager({game,leave:()=>backToGameMenu('cover')})},
+    ...(game.title_id?[
+      {id:'patches',label:'Patches',run:()=>openPatches()},
+      {id:'info',label:'Game details',run:()=>openGameInfo()}
+    ]:[]),
+    {id:'hidden',label:game.hidden?'Show game':'Hide game',run:()=>toggleGameHidden()},
+    {id:'back',label:gameTarget.fromLibrary?'Return to games':'Return to game list',run:()=>gameTarget.fromLibrary?closeModal():renderGameList()}
+  ];
+}
 // Optimized settings sit inside a game's settings; coming back reloads them because applying changed the override.
 function backToGameSettings(){openXenia(gameTarget.game.id).then(()=>{selected=0;highlight();});return true;}
 function backToGameMenu(id){renderGameMenu();selected=Math.max(0,gameMenuEntries().findIndex(entry=>entry.id===id));highlight();return true;}
@@ -669,9 +676,9 @@ async function activateContent(){
 const megabytes=bytes=>`${(bytes/1048576).toFixed(1)} MB`;
 // Xenia Settings › Folders: where your games are, where the dashboard keeps Xenia, and Xenia's own content folder.
 // ROM folders save at once; the library is rescanned on the way out.
-let romFolders=[],romsChanged=false,foldersInfo={};
-const romRows=()=>[{action:'add',label:'Choose ROM folders…'},...(romFolders.length?[{action:'remove',label:'Remove a ROM folder…'}]:[]),{action:'install',label:'Xenia install folder…'},{action:'content',label:'Xenia content folder…'},{action:'return',label:backLabel()}];
-async function loadFolders(){foldersInfo=await api.getSettings();romFolders=[...foldersInfo.rom_directories];}
+let romFolders=[],exeGames=[],romsChanged=false,foldersInfo={};
+const romRows=()=>[{action:'add',label:'Choose ROM folders…'},...(romFolders.length?[{action:'remove',label:'Remove a ROM folder…'}]:[]),{action:'add-exe',label:'Add game executables…'},...(exeGames.length?[{action:'remove-exe',label:'Remove a game executable…'}]:[]),{action:'install',label:'Xenia install folder…'},{action:'content',label:'Xenia content folder…'},{action:'return',label:backLabel()}];
+async function loadFolders(){foldersInfo=await api.getSettings();romFolders=[...foldersInfo.rom_directories];exeGames=[...(foldersInfo.exe_games||[])];}
 async function openRoms(){
   busy=true;try{await loadFolders();romsChanged=false;renderRoms();}catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}
 }
@@ -693,6 +700,9 @@ function updateRomsDetails(){
   }else if(action==='content'){
     label.textContent='Xenia content folder';value.textContent=foldersInfo.content_root||'Not available yet';
     text.textContent=foldersInfo.content_root?'Xenia\'s own content folder: saves, DLC and title updates. Changing it only changes Xenia\'s setting; what is in the old folder stays there.':'Install or choose a Xenia and start any game once, then this folder can be changed here.';
+  }else if(action==='add-exe'||action==='remove-exe'){
+    label.textContent='Game executables';value.textContent=`${exeGames.length} selected`;
+    text.textContent=exeGames.length?`${exeGames.join('\n')}\n\nOnly executables selected here are added to the library. Xbox game files continue to be found in ROM folders.`:'Choose individual .exe games to add. Other executables in ROM folders are ignored.';
   }else{
     label.textContent='ROM folders';value.textContent=romFolders.length?`${romFolders.length} folder${romFolders.length===1?'':'s'}`:'None yet';
     text.textContent=romFolders.length?`${romFolders.join('\n')}\n\nGames in every folder (and the folders inside them) appear in the library. The library refreshes when you leave this screen.`:'Choose the folders where your Xbox 360 games are. You can pick more than one.';
@@ -709,9 +719,11 @@ async function leaveRoms(){
 async function activateRoms(){
   const row=romRows()[selected];if(!row)return;
   if(row.action==='return')return leaveRoms();
-  const run=async work=>{busy=true;try{const before=romFolders.length;await work();await loadFolders();romsChanged=romsChanged||romFolders.length!==before;renderRoms(selected);}catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}};
+  const run=async work=>{busy=true;try{const before=JSON.stringify([romFolders,exeGames]);await work();await loadFolders();romsChanged=romsChanged||JSON.stringify([romFolders,exeGames])!==before;renderRoms(selected);}catch(error){errorDisplay.textContent=error.message;}finally{busy=false;}};
   if(row.action==='add')return run(()=>api.addRomFolders());
   if(row.action==='remove')return openChoice({title:'Remove a ROM folder',text:'The games stay on disk; they just leave the library.',options:romFolders.map(folder=>({value:folder,label:folder})),current:null,onPick:folder=>run(()=>api.removeRomFolder(folder))});
+  if(row.action==='add-exe')return run(()=>api.addExeGames());
+  if(row.action==='remove-exe')return openChoice({title:'Remove a game executable',text:'This only removes the game from the library; the file stays on disk.',options:exeGames.map(file=>({value:file,label:file})),current:null,onPick:file=>run(()=>api.removeExeGame(file))});
   if(row.action==='install')return openChoice({title:'Xenia install folder',text:`Xenia is stored in ${foldersInfo.install_root}. Builds already installed move with it.`,options:[{value:'choose',label:'Choose a folder…'},...(foldersInfo.install_is_default?[]:[{value:'default',label:'Back to the default folder'}]),{value:'',label:'Keep it where it is'}],current:'',onPick:value=>value?run(()=>api.updatesFolder(value)):undefined});
   if(row.action==='content')return openChoice({title:'Xenia content folder',text:foldersInfo.content_root?`Xenia keeps saves, DLC and updates in ${foldersInfo.content_root}. Changing it does not move what is there.`:'Xenia has no config yet: start any game once first.',options:[{value:'choose',label:'Choose a folder…'},{value:'default',label:'Back to Xenia\'s default'},{value:'',label:'Keep it where it is'}],current:'',onPick:value=>value?run(()=>api.contentFolder(value)):undefined});
 }

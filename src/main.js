@@ -274,30 +274,30 @@ async function launch(id) {
   if (child||launchPending) throw new Error('A game is already running');
   const game = library.games.find(g => g.id === id);
   if (!game) throw new Error('Unknown game');
-  await fs.access(game.rom_path); await fs.access(library.xenia_executable);
+  const executableGame=path.extname(game.rom_path).toLowerCase()==='.exe';
+  await fs.access(game.rom_path);
+  if(!executableGame)await fs.access(library.xenia_executable);
   // Re-check after asynchronous validation to prevent concurrent launches.
   if (child||launchPending) throw new Error('A game is already running');
   launchPending=true;
   adminSessions.clear();
-  // Native Linux builds (e.g. Xenia Edge AppImage) run directly; only Windows .exe files need Wine/Proton.
-  const wrapped = process.platform === 'linux' && library.runner !== 'native' && /\.exe$/i.test(library.xenia_executable);
-  const command = wrapped ? library.runner || 'wine' : library.xenia_executable;
-  // Xenia writes its log where the dashboard can read it: that is how the dashboard knows the game went back to the dashboard.
-  const sessionLog = path.join(app.getPath('userData'), 'xenia-session.log');
-  const xeniaArgs = ['--fullscreen', `--log_file=${sessionLog}`, '--log_level=2', game.rom_path];
-  const args = wrapped ? [...(library.runner_args || []), library.xenia_executable, ...xeniaArgs] : xeniaArgs;
-  await fs.mkdir(path.dirname(sessionLog), { recursive: true }); await fs.writeFile(sessionLog, '');
+  const wrapped=process.platform==='linux'&&library.runner!=='native'&&(executableGame||/\.exe$/i.test(library.xenia_executable));
+  const command=wrapped?library.runner||'wine':executableGame?game.rom_path:library.xenia_executable;
+  const sessionLog=executableGame?null:path.join(app.getPath('userData'),'xenia-session.log');
+  const xeniaArgs=sessionLog?['--fullscreen',`--log_file=${sessionLog}`,'--log_level=2',game.rom_path]:[];
+  const args=wrapped?[...(library.runner_args||[]),...(executableGame?[game.rom_path]:[library.xenia_executable]),...xeniaArgs]:xeniaArgs;
+  if(sessionLog){await fs.mkdir(path.dirname(sessionLog),{recursive:true});await fs.writeFile(sessionLog,'');}
   const handoff=prepareHandoff(win,{platform:process.platform});
-  try{await handoff.ready;child = spawn(command, args, { shell: false, cwd: path.dirname(library.xenia_executable), stdio: 'ignore', windowsHide: false, detached: process.platform === 'linux' });}
+  try{await handoff.ready;child=spawn(command,args,{shell:false,cwd:path.dirname(executableGame?game.rom_path:library.xenia_executable),stdio:'ignore',windowsHide:false,detached:process.platform==='linux'});}
   catch(error){handoff.cancel();throw error;}
   finally{launchPending=false;}
   let finished = false;
   const running = child;
   // "Return to Arcade" in the game: Xenia would stay open on its game list, so close it and come back to the dashboard.
-  const exitWatch = watchTitleExit(sessionLog, () => terminateXenia(running));
-  const finish = state => { if (!finished) { finished = true;exitWatch.stop();handoff.cancel(); recover(state); } };
+  const exitWatch=sessionLog?watchTitleExit(sessionLog,()=>terminateXenia(running)):null;
+  const finish=state=>{if(!finished){finished=true;exitWatch?.stop();handoff.cancel();recover(state);}};
   child.once('error', error => finish({ running: false, error: `Launch failed: ${error.message}` }));
-  child.once('close', code => finish({ running: false, error: code ? `Emulator exited with code ${code}` : null }));
+  child.once('close',code=>finish({running:false,error:code?`${executableGame?'Game':'Emulator'} exited with code ${code}`:null}));
   child.once('spawn', () => {
     // Keep the dashboard fullscreen underneath Xenia during window creation.
     globalShortcut.unregisterAll();
@@ -321,7 +321,10 @@ else {
     // Games from every ROM folder; a folder that cannot be read is named in the message but does not hide the others.
     const scanFolders = async () => {
       const failed = [];
-      const games = await covers.applyCached(await scanner.scanDirectories(scanner.romFolders(library), undefined, (folder, error) => failed.push(`${folder} (${error.code || error.message})`)), coverDirectory);
+      const directories=await scanner.scanDirectories(scanner.romFolders(library),undefined,(folder,error)=>failed.push(`${folder} (${error.code||error.message})`));
+      const executables=await scanner.scanExecutables(Array.isArray(library.exe_games)?library.exe_games:[],(file,error)=>failed.push(`${file} (${error.code||error.message})`));
+      const unique=new Map([...directories,...executables].map(game=>[game.rom_path,game]));
+      const games=await covers.applyCached([...unique.values()].sort((a,b)=>a.title.localeCompare(b.title)||a.rom_path.localeCompare(b.rom_path)),coverDirectory);
       scanError = failed.length ? `Could not read: ${failed.join(', ')}` : '';
       return games;
     };
@@ -460,7 +463,7 @@ else {
     const foldersView = async () => {
       let content_root = null;
       try { content_root = await xeniaContentRoot(xeniaLocation()); } catch { /* no Xenia yet, or no config yet */ }
-      return { rom_directories: scanner.romFolders(library), install_root: installsRoot(), install_is_default: !library.xenia_install_dir, content_root, admin_pin_required:library.admin_pin_required!==false,locked_sections:lockedSections() };
+      return { rom_directories: scanner.romFolders(library), exe_games:Array.isArray(library.exe_games)?library.exe_games:[], install_root: installsRoot(), install_is_default: !library.xenia_install_dir, content_root, admin_pin_required:library.admin_pin_required!==false,locked_sections:lockedSections() };
     };
     handle('admin:settings', () => { requireAdmin('xenia'); return foldersView(); });
     // Locations: the ROM folders. Adding or removing saves at once; the library is rescanned when the screen is left.
@@ -484,6 +487,27 @@ else {
       const have = scanner.romFolders(library);
       if (!have.includes(folder)) throw new Error('That folder is not in the list');
       return saveRomFolders(have.filter(known => known !== folder));
+    }));
+    const saveExeGames=async files=>{const next={...library,exe_games:files};await scanner.saveLibrary(libraryFile,next);library=next;return {files};};
+    handle('xenia:exe-games-add',()=>serialized(async()=>{
+      requireAdmin('xenia');
+      if(pickerOpen)throw Error('A file picker is already open');
+      pickerOpen=true;let picked=[];
+      try{
+        const have=Array.isArray(library.exe_games)?library.exe_games:[];
+        const result=await dialog.showOpenDialog(win,{title:'Choose game executables',defaultPath:have.at(-1)?path.dirname(have.at(-1)):undefined,properties:['openFile','multiSelections',...(process.platform==='win32'?['dontAddToRecent']:[])],filters:[{name:'Game executable',extensions:['exe']}]});
+        requireAdmin('xenia');
+        picked=result.canceled?[]:result.filePaths;
+      }finally{pickerOpen=false;}
+      const have=Array.isArray(library.exe_games)?library.exe_games:[];
+      const fresh=picked.filter(file=>typeof file==='string'&&file.length<=4096&&!file.includes('\0')&&path.isAbsolute(file)&&path.extname(file).toLowerCase()==='.exe'&&!have.some(known=>path.resolve(known)===path.resolve(file)));
+      return fresh.length?saveExeGames([...have,...fresh]):{files:have};
+    }));
+    handle('xenia:exe-games-remove',file=>serialized(async()=>{
+      requireAdmin('xenia');
+      const have=Array.isArray(library.exe_games)?library.exe_games:[];
+      if(!have.includes(file))throw Error('That executable is not in the list');
+      return saveExeGames(have.filter(known=>known!==file));
     }));
     handle('xenia:roms-rescan', () => serialized(async () => {
       requireAdmin('xenia');

@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('admin:settings'),
   addRomFolders: () => ipcRenderer.invoke('xenia:roms-add'),
   removeRomFolder: folder => ipcRenderer.invoke('xenia:roms-remove', folder),
+  addExeGames: () => ipcRenderer.invoke('xenia:exe-games-add'),
+  removeExeGame: file => ipcRenderer.invoke('xenia:exe-games-remove', file),
   rescanRoms: () => ipcRenderer.invoke('xenia:roms-rescan'),
   contentFolder: action => ipcRenderer.invoke('xenia:content-folder', action),
   chooseOwnXenia: () => ipcRenderer.invoke('xenia:updates-own'),

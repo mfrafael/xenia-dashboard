@@ -84,6 +84,26 @@ async function scanDirectory(directory, readInfo = xboxTitle.readTitleInfo) {
   for (const game of games) await describeGame(game, readInfo);
   return games.sort((a, b) => a.title.localeCompare(b.title) || a.rom_path.localeCompare(b.rom_path));
 }
+async function scanExecutables(files, onError) {
+  const games=[];
+  for(const file of files){
+    try{
+      if(typeof file!=='string'||!path.isAbsolute(file)||path.extname(file).toLowerCase()!=='.exe')throw Error('Invalid executable game path');
+      const full=path.resolve(file),stat=await fs.stat(full);
+      if(!stat.isFile())throw Error('Executable game path is not a file');
+      const stem=path.basename(full,path.extname(full));
+      let cover=null;
+      try{
+        const entries=await fs.readdir(path.dirname(full),{withFileTypes:true}),names=new Map(entries.filter(entry=>entry.isFile()).map(entry=>[entry.name.toLowerCase(),entry.name]));
+        cover=['.png','.jpg','.jpeg'].map(ext=>names.get((stem+ext).toLowerCase())).find(Boolean)||null;
+      }catch(error){if(!onError)throw error;onError(file,error);}
+      games.push({id:crypto.createHash('sha256').update(full).digest('hex').slice(0,20),title:cleanTitle(full),rom_path:full,cover_art_path:cover?path.join(path.dirname(full),cover):null,uses_fallback_art:!cover});
+    }catch(error){if(!onError)throw error;onError(file,error);}
+  }
+  const unique=new Map();
+  for(const game of games)if(!unique.has(game.rom_path))unique.set(game.rom_path,game);
+  return [...unique.values()].sort((a,b)=>a.title.localeCompare(b.title)||a.rom_path.localeCompare(b.rom_path));
+}
 // DLC and title updates sitting in a folder (named by hash, no extension), ready to be installed into Xenia.
 const INSTALLABLE = new Set([xboxTitle.CONTENT_TYPES.DLC, xboxTitle.CONTENT_TYPES.TITLE_UPDATE]);
 async function scanPackages(directory, readInfo = xboxTitle.readTitleInfo, limit = 5000) {
@@ -127,4 +147,4 @@ async function scanPackagesIn(directories, readInfo = xboxTitle.readTitleInfo, o
   for (const item of await eachFolder(directories, folder => scanPackages(folder, readInfo), onError)) if (!found.has(item.path)) found.set(item.path, item);
   return [...found.values()].sort((a, b) => a.title_id.localeCompare(b.title_id) || a.content_type - b.content_type || a.name.localeCompare(b.name));
 }
-module.exports = { romFolders, scanDirectories, scanPackagesIn, cleanTitle, hashPin, verifyPin, saveLibrary, loadLibrary, scanDirectory, scanPackages };
+module.exports = { romFolders, scanDirectories, scanExecutables, scanPackagesIn, cleanTitle, hashPin, verifyPin, saveLibrary, loadLibrary, scanDirectory, scanPackages };
