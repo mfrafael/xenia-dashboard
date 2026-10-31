@@ -7,11 +7,15 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const native = require('../src/native-games');
 
-test('native game files: .exe everywhere, .AppImage only on Linux, absolute and clean paths only', () => {
-  assert.deepEqual(native.EXTENSIONS('win32'), ['.exe']);
-  assert.deepEqual(native.EXTENSIONS('linux'), ['.exe', '.appimage']);
+test('native game files: any file on Linux, .exe/.bat/.cmd/.lnk on Windows, absolute and clean paths only', () => {
+  assert.deepEqual(native.EXTENSIONS('win32'), ['.exe', '.bat', '.cmd', '.lnk']);
+  assert.deepEqual(native.EXTENSIONS('linux'), ['.exe', '.appimage', '.sh']);
   assert.equal(native.isNativePath('/g/A.AppImage', 'win32'), false);
-  assert.equal(native.isNativePath('/g/A.APPIMAGE', 'linux'), true);
+  assert.equal(native.isNativePath('C:\\G\\notes.txt', 'win32'), false);
+  for (const name of ['A.APPIMAGE', 'start.sh', 'launcher', 'run.py']) assert.equal(native.isNativePath(`/g/${name}`, 'linux'), true, name);
+  for (const name of ['S.BAT', 'S.cmd', 'S.Lnk']) assert.equal(native.isNativePath(`C:\\G\\${name}`, 'win32'), true, name);
+  assert.deepEqual(native.pickerFilters('win32').length, 1);
+  assert.deepEqual(native.pickerFilters('linux')[1], { name: 'All files', extensions: ['*'] });
   assert.equal(native.isNativePath('C:\\Games\\Recomp.EXE', 'win32'), true);
   assert.equal(native.isNativePath('rel.exe', 'linux'), false);
   assert.equal(native.isNativePath('/g/a\0.exe', 'linux'), false);
@@ -53,6 +57,22 @@ test('native games use the typed title and a same-name picture; a missing file i
   assert.equal(games[0].uses_fallback_art, false);
   assert.deepEqual(failed, [missing]);
   await assert.rejects(native.games([{ path: missing, title: 'Gone' }], 'linux'));
+});
+
+test('Windows .bat/.cmd/.lnk start through cmd.exe, quoted as one piece; names cmd would misread are refused', () => {
+  const base = { platform: 'win32', userData: 'C:\\d', steamRoot: null, gameId: 'abc' };
+  const bat = native.launchCommand({ ...base, file: 'C:\\My Games\\A & B\\Start.bat' });
+  assert.deepEqual(bat, { command: 'cmd.exe', args: ['/d', '/s', '/c', '"call "C:\\My Games\\A & B\\Start.bat""'], env: null, cwd: path.dirname('C:\\My Games\\A & B\\Start.bat'), prefix: null, verbatim: true });
+  assert.equal(native.launchCommand({ ...base, file: 'C:\\G\\Game.LNK' }).args[3], '"start "" /wait "C:\\G\\Game.LNK""');
+  assert.throws(() => native.launchCommand({ ...base, file: 'C:\\G\\100%.bat' }), /Rename it/);
+  assert.equal(native.launchCommand({ ...base, file: 'C:\\G\\R.exe' }).verbatim, undefined);
+});
+
+test('a .sh without a #! line runs through sh; one with it, and any other Linux file, as it is', () => {
+  const base = { platform: 'linux', userData: '/d', steamRoot: '/s', gameId: 'abc' };
+  assert.deepEqual(native.launchCommand({ ...base, file: '/g/run.sh', script: true }), { command: 'sh', args: ['/g/run.sh'], env: null, cwd: '/g', prefix: null });
+  assert.equal(native.launchCommand({ ...base, file: '/g/run.sh' }).command, '/g/run.sh');
+  assert.equal(native.launchCommand({ ...base, file: '/g/launcher' }).command, '/g/launcher');
 });
 
 test('the launch command for each platform, file type and runner', () => {

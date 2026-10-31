@@ -433,7 +433,9 @@ async function launchNative(game) {
   if(!entry)throw new Error('Unknown game');
   try{await fs.access(game.rom_path);}catch{throw new Error(`Game file not found: ${game.rom_path}`);}
   const linux=process.platform==='linux';
-  const run=nativeGames.launchCommand({file:game.rom_path,platform:process.platform,runner:entry.runner||library.runner,runnerArgs:Array.isArray(library.runner_args)?library.runner_args:[],userData:app.getPath('userData'),steamRoot:linux?await runners.steamRoot(app.getPath('home')):null,gameId:game.id});
+  let script=false;
+  if(linux&&/\.sh$/i.test(game.rom_path)){try{const fh=await fs.open(game.rom_path,'r');try{const {bytesRead,buffer}=await fh.read(new Uint8Array(2),0,2,0);script=!(bytesRead===2&&buffer[0]===0x23&&buffer[1]===0x21);}finally{await fh.close();}}catch{/* unreadable: it fails when started, with the real reason */}}
+  const run=nativeGames.launchCommand({script,file:game.rom_path,platform:process.platform,runner:entry.runner||library.runner,runnerArgs:Array.isArray(library.runner_args)?library.runner_args:[],userData:app.getPath('userData'),steamRoot:linux?await runners.steamRoot(app.getPath('home')):null,gameId:game.id});
   if(run.command!==game.rom_path&&path.isAbsolute(run.command)){try{await fs.access(run.command);}catch{throw new Error(`Runner not found: ${run.command}`);}}
   // A downloaded AppImage often lacks the executable bit; the user picked this file, so make it runnable for them.
   if(linux&&run.command===game.rom_path){
@@ -446,7 +448,7 @@ async function launchNative(game) {
   launchPending=true;
   adminSessions.clear();
   const handoff=prepareHandoff(win,{platform:process.platform});
-  try{await handoff.ready;child=spawn(run.command,run.args,{shell:false,cwd:run.cwd,stdio:'ignore',windowsHide:false,detached:linux,...(run.env?{env:{...process.env,...run.env}}:{})});}
+  try{await handoff.ready;child=spawn(run.command,run.args,{shell:false,cwd:run.cwd,stdio:'ignore',windowsHide:false,detached:linux,...(run.verbatim?{windowsVerbatimArguments:true}:{}),...(run.env?{env:{...process.env,...run.env}}:{})});}
   catch(error){handoff.cancel();throw error;}
   finally{launchPending=false;}
   let finished=false;
@@ -623,7 +625,7 @@ else {
     const foldersView = async () => {
       let content_root = null;
       try { content_root = await xeniaContentRoot(xeniaLocation()); } catch { /* no Xenia yet, or no config yet */ }
-      return { rom_directories: scanner.romFolders(library), native_games:nativeGames.entries(library).map(entry=>({id:nativeGames.gameId(entry.path),path:entry.path,title:entry.title})),native_appimage:process.platform==='linux', install_root: installsRoot(), install_is_default: !library.xenia_install_dir, content_root, admin_pin_required:library.admin_pin_required!==false,locked_sections:lockedSections() };
+      return { rom_directories: scanner.romFolders(library), native_games:nativeGames.entries(library).map(entry=>({id:nativeGames.gameId(entry.path),path:entry.path,title:entry.title})),native_hint:nativeGames.fileHint(process.platform), install_root: installsRoot(), install_is_default: !library.xenia_install_dir, content_root, admin_pin_required:library.admin_pin_required!==false,locked_sections:lockedSections() };
     };
     handle('admin:settings', () => { requireAdmin('xenia'); return foldersView(); });
     // Locations: the ROM folders. Adding or removing saves at once; the library is rescanned when the screen is left.
@@ -666,8 +668,8 @@ else {
       if(pickerOpen)throw Error('A file picker is already open');
       pickerOpen=true;let picked=[];
       try{
-        const last=nativeGames.entries(library).at(-1),extensions=nativeGames.EXTENSIONS(process.platform).map(ext=>ext==='.appimage'?'AppImage':ext.slice(1));
-        const result=await dialog.showOpenDialog(win,{title:'Choose games',defaultPath:last?path.dirname(last.path):undefined,properties:['openFile','multiSelections',...(process.platform==='win32'?['dontAddToRecent']:[])],filters:[{name:'Games',extensions}]});
+        const last=nativeGames.entries(library).at(-1);
+        const result=await dialog.showOpenDialog(win,{title:'Choose games',defaultPath:last?path.dirname(last.path):undefined,properties:['openFile','multiSelections',...(process.platform==='win32'?['dontAddToRecent']:[])],filters:nativeGames.pickerFilters(process.platform)});
         requireAdmin('xenia');
         picked=result.canceled?[]:result.filePaths;
       }finally{pickerOpen=false;}

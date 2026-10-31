@@ -705,7 +705,7 @@ function updateRomsDetails(){
     text.textContent=foldersInfo.content_root?'Xenia\'s own content folder: saves, DLC and title updates. Changing it only changes Xenia\'s setting; what is in the old folder stays there.':'Install or choose a Xenia and start any game once, then this folder can be changed here.';
   }else if(action==='add-native'||action==='remove-native'){
     label.textContent='Games that run by themselves';value.textContent=nativeList.length?`${nativeList.length} game${nativeList.length===1?'':'s'}`:'None yet';
-    text.textContent=nativeList.length?`${nativeList.map(game=>game.title).join('\n')}\n\nGames that run without Xenia: recompilations and PC ports. Each one is a file you choose (.exe${foldersInfo.native_appimage?' or .AppImage':''}); you name it and pick its cover.`:'Recompilations and PC ports run without Xenia. Choose their files here, name each one, and pick a cover from LaunchBox.';
+    text.textContent=nativeList.length?`${nativeList.map(game=>game.title).join('\n')}\n\nGames that run without Xenia: recompilations and PC ports. Each one is a file you choose (${foldersInfo.native_hint||'.exe'}); you name it and pick its cover.`:'Recompilations and PC ports run without Xenia. Choose their files here, name each one, and pick a cover from LaunchBox.';
   }else{
     label.textContent='ROM folders';value.textContent=romFolders.length?`${romFolders.length} folder${romFolders.length===1?'':'s'}`:'None yet';
     text.textContent=romFolders.length?`${romFolders.join('\n')}\n\nGames in every folder (and the folders inside them) appear in the library. The library refreshes when you leave this screen.`:'Choose the folders where your Xbox 360 games are. You can pick more than one.';

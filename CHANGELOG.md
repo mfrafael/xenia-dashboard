@@ -3,6 +3,15 @@
 All notable changes to Xenia Dashboard. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-10-31
+
+### Added
+- **Any launcher for a game that runs by itself.** On Linux, *Add games…* takes `.sh` scripts and, with *All files*, any other file. On Windows it takes `.bat`, `.cmd` and `.lnk` shortcuts too.
+- A `.sh` without a `#!` line now runs through `sh` instead of failing.
+
+### Minor changes
+- The file picker is named "Games and launchers" and lists the supported types.
+
 ## [1.4.0] - 2026-10-25
 
 Updates for the dashboard and for Xenia.

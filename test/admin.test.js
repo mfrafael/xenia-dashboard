@@ -44,7 +44,7 @@ async function mainHarness(withTheme=false,coverMode='none',gameExtra={},options
     }
   };
   const context = vm.createContext({
-    require: name => name === './self-update' ? selfUpdate : name === './xenia-releases' ? { ...require('../src/xenia-releases'), httpsFetcher: (url, init) => routes.has(url) ? Promise.resolve(routes.get(url)(url, init)) : Promise.reject(new Error(`unrouted ${url}`)) } : name === 'electron' ? electron : name === 'node:child_process' ? { spawn: (...args) => { spawnCalls.push(args); return emulator; } } : name === 'node:fs/promises' ? { access: async file => { accessCalls.push(file); if(file===''||options.missingPaths?.includes(file))throw Object.assign(Error('ENOENT'),{code:'ENOENT'}); },mkdir:async(...args)=>{mkdirCalls.push(args);},writeFile:async()=>{},rename:async()=>{},unlink:async()=>{},readdir:(...args)=>require('node:fs/promises').readdir(...args),stat:(...args)=>require('node:fs/promises').stat(...args),chmod:async(...args)=>{chmodCalls.push(args);if(options.chmodFails)throw Object.assign(Error(`EPERM: operation not permitted, chmod '${args[0]}'`),{code:'EPERM'});} } : name==='./nxe'?{...require('../src/nxe'),loadTheme:async()=>({directory:__dirname,manifest:{version:1,assets:{},backgrounds:[{id:'theme-test',label:'Test'}],inventory:[],sounds:{},notes:[]},selected:'theme-test',audio:{volume:.5,muted:options.legacyMuted===true}})}:name === './scanner' ? { ...scanner, loadLibrary: async () => ({ rom_directory: options.romDirectory ?? '', rom_directories: options.romDirectory ? [options.romDirectory] : [], xenia_executable: options.executable ?? 'C:\\Xenia\\xenia.exe', games: [game], admin_credential: scanner.hashPin('1234'), ...(options.library || {}) }), scanDirectory: async () => [game], scanDirectories: async () => { scans.count++; return [game]; }, saveLibrary: async (_file, next) => { if (saveControl.fail) throw new Error('disk full'); saved.push(next); } } : require(name.startsWith('./') ? '../src/' + name.slice(2) : name),
+    require: name => name === './self-update' ? selfUpdate : name === './xenia-releases' ? { ...require('../src/xenia-releases'), httpsFetcher: (url, init) => routes.has(url) ? Promise.resolve(routes.get(url)(url, init)) : Promise.reject(new Error(`unrouted ${url}`)) } : name === 'electron' ? electron : name === 'node:child_process' ? { spawn: (...args) => { spawnCalls.push(args); return emulator; } } : name === 'node:fs/promises' ? { access: async file => { accessCalls.push(file); if(file===''||options.missingPaths?.includes(file))throw Object.assign(Error('ENOENT'),{code:'ENOENT'}); },mkdir:async(...args)=>{mkdirCalls.push(args);},writeFile:async()=>{},rename:async()=>{},unlink:async()=>{},readdir:(...args)=>require('node:fs/promises').readdir(...args),stat:(...args)=>require('node:fs/promises').stat(...args),open:(...args)=>require('node:fs/promises').open(...args),chmod:async(...args)=>{chmodCalls.push(args);if(options.chmodFails)throw Object.assign(Error(`EPERM: operation not permitted, chmod '${args[0]}'`),{code:'EPERM'});} } : name==='./nxe'?{...require('../src/nxe'),loadTheme:async()=>({directory:__dirname,manifest:{version:1,assets:{},backgrounds:[{id:'theme-test',label:'Test'}],inventory:[],sounds:{},notes:[]},selected:'theme-test',audio:{volume:.5,muted:options.legacyMuted===true}})}:name === './scanner' ? { ...scanner, loadLibrary: async () => ({ rom_directory: options.romDirectory ?? '', rom_directories: options.romDirectory ? [options.romDirectory] : [], xenia_executable: options.executable ?? 'C:\\Xenia\\xenia.exe', games: [game], admin_credential: scanner.hashPin('1234'), ...(options.library || {}) }), scanDirectory: async () => [game], scanDirectories: async () => { scans.count++; return [game]; }, saveLibrary: async (_file, next) => { if (saveControl.fail) throw new Error('disk full'); saved.push(next); } } : require(name.startsWith('./') ? '../src/' + name.slice(2) : name),
     __dirname: path.join(__dirname, '..', 'src'), console: { info() {}, warn() {}, error() {} }, process: { platform: options.platform || 'win32', env: options.env || {}, on() {} }, Date: { now: () => now }, URL, Response,
     setTimeout: (fn, ms) => { const timer = { fn, ms, unref() { timer.unrefed = true; return timer; } }; timers.push(timer); return timer; }
   });
@@ -170,14 +170,14 @@ async function nativeFiles(t){
 }
 test('native games: picked files are named one by one, then renamed and removed, all under the Xenia session',async t=>{
   const {file}=await nativeFiles(t);
-  const old=await file('Old Recomp.exe'),sonic=await file('Sonic – Recomp/Unleashed "R".exe'),appimage=await file('Game.AppImage'),iso=await file('Halo.iso');
+  const old=await file('Old Recomp.exe'),sonic=await file('Sonic – Recomp/Unleashed "R".exe'),appimage=await file('Game.AppImage'),script=await file('Launch Game.sh'),iso=await file('Halo.iso');
   const h=await mainHarness(false,'none',{},{platform:'linux',library:{exe_games:[old]}});
   await h.invoke('admin:unlock','1234','xenia');
   assert.deepEqual(JSON.parse(JSON.stringify((await h.invoke('admin:settings')).native_games)),[{id:nativeGames.gameId(old),path:old,title:'Old Recomp'}],'the first version\'s list is kept');
   assert.equal(Object.hasOwn(await h.invoke('admin:settings'),'exe_games'),false);
-  h.setResult({canceled:false,filePaths:[sonic,appimage,old,'relative.exe',iso]});
-  assert.deepEqual(Array.from((await h.invoke('native:pick')).files),[sonic,appimage],'new, valid game files only');
-  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.at(-1).filters)),[{name:'Games',extensions:['exe','AppImage']}]);
+  h.setResult({canceled:false,filePaths:[sonic,appimage,script,old,'relative.exe',iso]});
+  assert.deepEqual(Array.from((await h.invoke('native:pick')).files),[sonic,appimage,script,iso],'new files with an absolute path; on Linux any file can start a game');
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.at(-1).filters)),[{name:'Games and launchers (.exe, .AppImage, .sh)',extensions:['exe','AppImage','sh']},{name:'All files',extensions:['*']}]);
   await assert.rejects(h.invoke('native:add','/elsewhere/x.exe','X'),/not one you picked/);
   for(const bad of ['  ','x'.repeat(121),42])await assert.rejects(h.invoke('native:add',sonic,bad),/Invalid game name/);
   const added=await h.invoke('native:add',sonic,' Sonic Unleashed ');
@@ -209,12 +209,12 @@ test('changing native games never walks the ROM folders again',async t=>{
   await h.invoke('native:remove',added.id);
   assert.equal(h.scans.count,before,'only the native games are rebuilt');
 });
-test('native games on Windows: only .exe files, and the picker needs the Xenia session to the end',async t=>{
-  const {file}=await nativeFiles(t);const exe=await file('Recomp.exe'),appimage=await file('Game.AppImage');
+test('native games on Windows: only .exe, .bat, .cmd and .lnk files, and the picker needs the Xenia session to the end',async t=>{
+  const {file}=await nativeFiles(t);const exe=await file('Recomp.exe'),appimage=await file('Game.AppImage'),bat=await file('Start.BAT'),lnk=await file('Game.lnk'),txt=await file('notes.txt');
   const h=await mainHarness();await h.invoke('admin:unlock','1234','xenia');
-  h.setResult({canceled:false,filePaths:[exe,appimage]});
-  assert.deepEqual(Array.from((await h.invoke('native:pick')).files),[exe]);
-  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.at(-1))).filters,[{name:'Games',extensions:['exe']}]);
+  h.setResult({canceled:false,filePaths:[exe,appimage,bat,lnk,txt]});
+  assert.deepEqual(Array.from((await h.invoke('native:pick')).files),[exe,bat,lnk]);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.at(-1))).filters,[{name:'Games and launchers (.exe, .bat, .cmd, .lnk)',extensions:['exe','bat','cmd','lnk']}]);
   assert.deepEqual(Array.from(h.calls.at(-1).properties),['openFile','multiSelections','dontAddToRecent']);
   h.setResult(()=>{h.setTime(1300001);return {canceled:false,filePaths:[exe]};});
   await assert.rejects(h.invoke('native:pick'),/session expired/);
@@ -228,6 +228,14 @@ test('native games launch by themselves; on Linux an .exe goes through Wine or P
   assert.equal(JSON.stringify(windows.spawnCalls[0]),JSON.stringify([exe,[],{shell:false,cwd:path.dirname(exe),stdio:'ignore',windowsHide:false,detached:false}]));
   assert.deepEqual(windows.accessCalls,[exe],'Xenia is not needed');
   windows.emulator.emit('close',0);
+  const bat=await file('Start Game.bat'),lnk=await file('Game.lnk');
+  const cmds=await mainHarness(false,'none',{},{library:{xenia_executable:'',native_games:[{path:bat,title:'Bat'},{path:lnk,title:'Link'}]}});
+  await cmds.invoke('game:launch',nativeGames.gameId(bat));
+  assert.deepEqual([cmds.spawnCalls[0][0],Array.from(cmds.spawnCalls[0][1]),cmds.spawnCalls[0][2].windowsVerbatimArguments],['cmd.exe',['/d','/s','/c',`"call "${bat}""`],true]);
+  cmds.emulator.emit('close',0);
+  await cmds.invoke('game:launch',nativeGames.gameId(lnk));
+  assert.deepEqual(Array.from(cmds.spawnCalls[1][1]),['/d','/s','/c',`"start "" /wait "${lnk}""`]);
+  cmds.emulator.emit('close',0);
   const wine=await mainHarness(false,'none',{},{platform:'linux',...options({runner:'native',runner_args:['-windowed']})});
   await wine.invoke('game:launch',id);
   assert.equal(JSON.stringify(wine.spawnCalls[0]),JSON.stringify(['wine',['-windowed',exe],{shell:false,cwd:path.dirname(exe),stdio:'ignore',windowsHide:false,detached:true}]),'a Windows game never runs directly on Linux');
@@ -244,6 +252,15 @@ test('native games launch by themselves; on Linux an .exe goes through Wine or P
   assert.equal(linux.spawnCalls[1][0],appimage);
   assert.ok(linux.chmodCalls.some(([target,mode])=>target===appimage&&mode&0o100),'an AppImage is made runnable first');
   linux.emulator.emit('close',0);
+  const sh=await file('plain.sh',0o644),shebang=await file('bang.sh',0o755);
+  require('node:fs').writeFileSync(shebang,'#!/bin/bash\necho hi\n');
+  const scripts=await mainHarness(false,'none',{},{platform:'linux',library:{xenia_executable:'',native_games:[{path:sh,title:'Plain'},{path:shebang,title:'Bang'}]}});
+  await scripts.invoke('game:launch',nativeGames.gameId(sh));
+  assert.deepEqual([scripts.spawnCalls[0][0],Array.from(scripts.spawnCalls[0][1])],['sh',[sh]],'a .sh without a #! line runs through sh');
+  scripts.emulator.emit('close',0);
+  await scripts.invoke('game:launch',nativeGames.gameId(shebang));
+  assert.deepEqual([scripts.spawnCalls[1][0],Array.from(scripts.spawnCalls[1][1])],[shebang,[]],'a .sh with a #! line runs as it is');
+  scripts.emulator.emit('close',0);
   const gone=await mainHarness(false,'none',{},{...options(),missingPaths:[exe]});
   await assert.rejects(gone.invoke('game:launch',id),/Game file not found/);
   const noProton=await mainHarness(false,'none',{},{platform:'linux',missingPaths:[proton],library:{xenia_executable:'',native_games:[{path:exe,title:'Sonic',runner:proton}]}});

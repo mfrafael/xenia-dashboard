@@ -66,6 +66,6 @@ each section is a horizontal row; A enters a screen. See `ARCHITECTURE.md`.
 
 ## Done
 
-- **Games that run by themselves** (1.3.0): recomps and PC ports (`.exe`, `.AppImage` on Linux) next to the Xenia games; named and given a LaunchBox cover (any platform) when added, never blocked; *Run with* Wine/Proton on Linux. Built on @hernjon's first version.
+- **Games that run by themselves** (1.3.0): recomps and PC ports (`.exe`, `.AppImage` on Linux; since 1.5.0 any file on Linux, `.bat`/`.cmd`/`.lnk` on Windows) next to the Xenia games; named and given a LaunchBox cover (any platform) when added, never blocked; *Run with* Wine/Proton on Linux. Built on @hernjon's first version.
 - **Windowed mode and a smoother first run** (1.1.0): fullscreen or windowed (*View › Window*, Alt+Enter), WASD and Q/E on the keyboard, a one-step cover download in the Install Wizard, a pop-up that says what to do when Xenia is not set up or has not run yet, and a cleaner Updates screen.
 - **Install wizard and View picker** (1.0.0): a neutral first-run timeline to choose the view, then Xenia, ROM folders and covers in the chosen view; the same picker is *Dashboard Settings › View*, and the wizard re-runs from *Dashboard Settings › Install Wizard*. The name of a dashboard style is now "View" everywhere the user reads.
