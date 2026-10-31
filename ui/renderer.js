@@ -764,7 +764,7 @@ async function addNamedNative(file,title){
 async function findNativeCover(game,query,{adding,after}){
   busy=true;errorDisplay.textContent='Searching LaunchBox…';let found=[],problem=null,source=null;
   try{[source]=await api.coverSources(game.id);found=await api.searchCovers(game.id,'launchbox-all',query);}catch(error){problem=error.message;}finally{busy=false;errorDisplay.textContent='';}
-  if(found.length)return openCoverSearch({game,query,games:found,source,returnLabel:adding?'Continue without a cover':'Keep current cover',leave:after});
+  if(found.length)return openCoverSearch({game,query,games:found,source,returnLabel:adding?'Continue without a cover':'Keep current cover',leave:after,nameDefault:'launchbox'});
   if(!adding)return after();
   const missingData=!!problem&&problem.includes(NO_LAUNCHBOX_DATA);
   const text=missingData?'LaunchBox data is not downloaded yet, so no cover can be looked up.':problem?'LaunchBox could not be reached, so no cover can be looked up.':`${query} was not found on LaunchBox.`;

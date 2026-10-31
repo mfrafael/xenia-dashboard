@@ -26,7 +26,7 @@ function setup(directory, extra = {}) {
 test('both sources answer the same questions', async t => {
   const { sources } = setup(await temp(t));
   assert.deepEqual([...sources.keys()], ['launchbox', 'xenia-manager', 'launchbox-all'], 'LaunchBox is always listed before Xenia Manager; every-platform LaunchBox (native games) last');
-  for (const source of sources.values()) for (const method of ['status', 'prepare', 'search', 'pictures', 'image', 'auto']) assert.equal(typeof source[method], 'function', `${source.id}.${method}`);
+  for (const source of sources.values()) for (const method of ['status', 'prepare', 'search', 'pictures', 'image', 'auto', 'name']) assert.equal(typeof source[method], 'function', `${source.id}.${method}`);
   assert.deepEqual(['xenia-manager', 'launchbox', 'launchbox-all'].map(id => sources.get(id).needsDownload), [false, true, true]);
   assert.deepEqual(Object.keys(coverSources.AUTO_MODES), ['launchbox', 'both', 'xenia-manager'], 'the same order in the automatic download modes');
 });
@@ -82,4 +82,14 @@ test('every-platform LaunchBox (native games) searches all of LaunchBox, shows t
 });
 test('the bulk download order puts LaunchBox first only when asked', () => {
   assert.deepEqual({ ...coverSources.AUTO_MODES }, { 'xenia-manager': ['xenia-manager'], launchbox: ['launchbox'], both: ['launchbox', 'xenia-manager'] });
+});
+
+test('Xenia Manager names a game by title ID and says nothing for an unknown or malformed one; every-platform LaunchBox never names', async t => {
+  const { sources } = setup(await temp(t)), manager = sources.get('xenia-manager');
+  assert.equal(await manager.name({ titleId: '4D5307D5' }), 'Gears of War');
+  assert.equal(await manager.name({ titleId: 'FFFFFFFF' }), null);
+  assert.equal(await manager.name({ titleId: '../x' }), null);
+  assert.equal(await manager.name({}), null);
+  assert.equal(await sources.get('launchbox-all').name({ title: 'Halo 3' }), null);
+  assert.equal(await sources.get('launchbox').name({ title: 'Halo 3' }), null, 'no LaunchBox data yet: nothing, not an error');
 });

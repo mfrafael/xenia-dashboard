@@ -780,7 +780,7 @@ async function coverHarness(t) {
 }
 test('the cover manager is guarded: per-game calls need the Xenia session, the shared ones any section', async t => {
   const { h } = await coverHarness(t);
-  for (const call of [['covers:sources'], ['covers:prepare', 'launchbox'], ['covers:search', 'test-game', 'launchbox'], ['covers:pictures', 'test-game', 'launchbox', '77'], ['covers:preview', 'test-game', 'launchbox', '77', 'front-na.jpg'], ['covers:apply', 'test-game', 'launchbox', '77', 'front-na.jpg'], ['covers:local', 'test-game']]) await assert.rejects(h.invoke(...call), /session expired/, call[0]);
+  for (const call of [['covers:sources'], ['covers:prepare', 'launchbox'], ['covers:search', 'test-game', 'launchbox'], ['covers:pictures', 'test-game', 'launchbox', '77'], ['covers:preview', 'test-game', 'launchbox', '77', 'front-na.jpg'], ['covers:apply', 'test-game', 'launchbox', '77', 'front-na.jpg'], ['covers:local', 'test-game'], ['covers:name', 'test-game', 'X']]) await assert.rejects(h.invoke(...call), /session expired/, call[0]);
   await assert.rejects(h.untrusted('covers:sources'), /Untrusted/); await assert.rejects(h.untrusted('covers:local', 'test-game'), /Untrusted/);
   await h.invoke('admin:unlock', '1234', 'dashboard');
   assert.equal((await h.invoke('covers:sources')).length, 2, 'the bulk screen can list sources');
@@ -801,6 +801,10 @@ test('Xenia Manager through the cover manager: search, pictures, preview and app
   const games = await h.invoke('covers:apply', 'test-game', 'xenia-manager', '12345678', 'boxart');
   assert.equal(games[0].uses_fallback_art, false); assert.match(games[0].cover_art_path, /^kratos-art:\/\/cover\/test-game/);
   await assert.rejects(h.invoke('covers:apply', 'test-game', 'xenia-manager', '12345678', 'other'), /Unknown picture/);
+  const named = await h.invoke('covers:name', 'test-game', '  Test:  Game \u0007 ');
+  assert.equal(named.games[0].title, 'Test: Game', 'the name a cover source gave is kept, cleaned');
+  await assert.rejects(h.invoke('covers:name', 'test-game', '   '), /Invalid game name/); await assert.rejects(h.invoke('covers:name', 'test-game', 42), /Invalid game name/);
+  await assert.rejects(h.invoke('covers:name', 'nope', 'X'), /Unknown game/);
 });
 test('LaunchBox through the cover manager: download once, then search, preview and apply', async t => {
   const { h } = await coverHarness(t);

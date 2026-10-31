@@ -3,6 +3,17 @@
 All notable changes to Xenia Dashboard. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-10-31
+
+### Added
+- **Proper game names.** The cover download (*Dashboard Settings › Game covers*, or the wizard) now also names your games: LaunchBox's name when it matches, otherwise Xenia Manager's name for the game's title ID. "Naruto The Broken Bond" becomes "Naruto: The Broken Bond". Only games without a name yet are renamed (*Download covers* redoes every game); the file on disk is never touched.
+
+### Fixed
+- Choosing a cover from LaunchBox or Xenia Manager for a single game (changing it, or adding or renaming a game that runs by itself) now asks whether to use that source's name or keep yours.
+
+### Minor changes
+- *Updates* is now the first tile of Dashboard Settings.
+
 ## [1.5.0] - 2026-10-31
 
 ### Added

@@ -10,3 +10,9 @@ test('disc grouping collapses explicit discs in numeric order and keeps IDs/cach
  assert.equal(discInfo(path.join('games','Blue_Dragon_Disk_03.iso')).number,3);
  assert.equal(discInfo(path.join('games','Blue Dragon','Disc 2','default.xex')).title,'Blue Dragon');
 });
+
+test('a group takes the name a cover source gave its first disc, not the one cut from the file names',()=>{
+ const game=(file,id,extra={})=>({id,title:'x',rom_path:path.join('/g',file),...extra});
+ const grouped=groupGames([game('Naruto The Broken Bond (Disc 2).iso','b',{title:'Naruto: The Broken Bond',named:true}),game('Naruto The Broken Bond (Disc 1).iso','a',{title:'Naruto: The Broken Bond',named:true})]);
+ assert.equal(grouped.length,1);assert.equal(grouped[0].title,'Naruto: The Broken Bond');
+});

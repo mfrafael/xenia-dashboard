@@ -26,14 +26,14 @@ const coverModeInfo = () => AUTO_MODES.find(mode => mode.value === cm.mode) || A
 async function openCoverManager(context) {
   busy = true; errorDisplay.textContent = '';
   try {
-    cm = { ...cm, context, sources: await api.coverSources(context.game?.id), stage: context.game ? 'home' : 'bulk', source: null, games: [], pictures: [], game: null, query: context.game?.title || '', manualQuery: false, direct: null };
+    cm = { ...cm, context, sources: await api.coverSources(context.game?.id), stage: context.game ? 'home' : 'bulk', source: null, games: [], pictures: [], game: null, query: context.game?.title || '', manualQuery: false, direct: null, nameDefault: 'keep' };
     renderCover();
   } catch (error) { errorDisplay.textContent = error.message; } finally { busy = false; }
 }
 // Straight to the games LaunchBox found, when a native game is added or renamed. Return (with returnLabel) and a picture
 // that was used both go on with leave(); there is no source list to go back to.
-function openCoverSearch({ game, query, games, source, returnLabel, leave }) {
-  cm = { ...cm, context: { game, leave }, sources: source ? [source] : [], source: source || { id: 'launchbox-all', label: 'LaunchBox', needs_download: false }, stage: 'games', games, pictures: [], game: null, query, manualQuery: true, direct: returnLabel };
+function openCoverSearch({ game, query, games, source, returnLabel, leave, nameDefault }) {
+  cm = { ...cm, context: { game, leave }, sources: source ? [source] : [], source: source || { id: 'launchbox-all', label: 'LaunchBox', needs_download: false }, stage: 'games', games, pictures: [], game: null, query, manualQuery: true, direct: returnLabel, nameDefault: nameDefault || 'keep' };
   renderCover();
 }
 function coverRows() {
@@ -127,6 +127,19 @@ async function searchLaunchBox(query, returnIndex) {
   } catch (error) { cm.stage = 'games'; renderCover(0); errorDisplay.textContent = error.message; }
   finally { busy = false; }
 }
+// After a cover is chosen from LaunchBox or Xenia Manager: the source's name or the one already there. Closing the dialog keeps the current name.
+function askNameChoice(game, current, official, preferred, sourceLabel) {
+  const direct = !!cm.direct;
+  const done = () => { if (direct) cm.context.leave(); else renderCover(); };
+  openChoice({
+    title: 'Name this game', text: 'The cover is changed. Which name should the game have? Closing this keeps yours.', current: preferred === 'launchbox' ? 'launchbox' : 'keep', onCancel: done,
+    options: [{ value: 'launchbox', label: `Use ${sourceLabel} name: ${official}` }, { value: 'keep', label: `Keep my name: ${current}` }],
+    onPick: async value => {
+      if (value === 'launchbox') { try { gamesList = game.kind === 'native' ? (await api.renameNativeGame(game.id, official)).games : (await api.nameGame(game.id, official)).games; cm.context.game = { ...game, title: official }; renderCarousel(); } catch (error) { errorDisplay.textContent = error.message; } }
+      done();
+    }
+  });
+}
 async function activateCover() {
   const row = coverRows()[selected]; if (!row) return;
   if (row.action === 'back') return coverBack();
@@ -146,10 +159,14 @@ async function activateCover() {
     } else if (row.action === 'game') {
       errorDisplay.textContent = 'Loading pictures…'; cm.pictures = await api.coverPictures(cm.context.game.id, cm.source.id, row.game.key); cm.game = row.game; cm.stage = 'pictures'; renderCover(); errorDisplay.textContent = '';
     } else if (row.action === 'use') {
-      errorDisplay.textContent = 'Downloading cover…'; gamesList = await api.applyCover(cm.context.game.id, cm.source.id, cm.game.key, row.picture.key); renderCarousel(); errorDisplay.textContent = 'Cover changed.'; used = true;
+      errorDisplay.textContent = 'Downloading cover…'; gamesList = await api.applyCover(cm.context.game.id, cm.source.id, cm.game.key, row.picture.key); used = true;
+      renderCarousel(); errorDisplay.textContent = 'Cover changed.';
+      // The source's game may have a better name than the words typed to find it: ask which to keep.
+      const current = cm.context.game.title, official = cm.game.title;
+      if (official && official.toLowerCase() !== String(current).toLowerCase()) { askNameChoice(cm.context.game, current, official, cm.nameDefault, cm.source.label); return; }
     } else if (row.action === 'auto' || row.action === 'auto-all') {
       errorDisplay.textContent = 'Downloading covers…'; const result = await api.autoCovers(cm.mode, row.action === 'auto-all'); gamesList = result.games; renderCarousel(); renderCover(selected);
-      errorDisplay.textContent = `${result.downloaded} cover${result.downloaded === 1 ? '' : 's'} downloaded${result.missing ? ` · ${result.missing} not found` : ''}.`;
+      errorDisplay.textContent = `${result.downloaded} cover${result.downloaded === 1 ? '' : 's'} downloaded${result.missing ? ` · ${result.missing} not found` : ''}${result.renamed ? ` · ${result.renamed} renamed` : ''}.`;
     } else if (row.action === 'rescan') { gamesList = await api.rescanCovers(); renderCarousel(); renderCover(selected); status('Local cover images rescanned.'); }
   } catch (error) { errorDisplay.textContent = error.message; } finally { busy = false; }
   if (used && cm.direct) cm.context.leave();

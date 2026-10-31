@@ -486,6 +486,8 @@ else {
     const scanFolders = async () => {
       const failed = [];
       const xenia=await covers.applyCached(await scanner.scanDirectories(scanner.romFolders(library),undefined,(folder,error)=>failed.push(`${folder} (${error.code||error.message})`)),coverDirectory);
+      // A name a cover source gave a game (see admin:cover-auto) outlives the rescan, which only knows the file name.
+      for(const game of xenia){const name=library.game_names?.[game.id];if(typeof name==='string'&&name){game.title=name;game.named=true;}}
       const games=[...xenia,...await scanNative(failed)].sort(byTitle);
       scanError = failed.length ? `Could not read: ${failed.join(', ')}` : '';
       return games;
@@ -888,6 +890,15 @@ else {
       const image=localCover.convert(found.bytes,nativeImage);requireAdmin('xenia');
       return useCover(game,image,source.id,sourceId==='xenia-manager'?key:null);
     }));
+    // A Xenia game takes the name its cover source gave it (native games have native:rename). Kept in the library, so a rescan finds it again;
+    // every disc of a multi-disc game gets it. The file on disk is not touched.
+    handle('covers:name',(gameId,name)=>serialized(async()=>{
+      requireAdmin('xenia');const game=coverGame(gameId);if(game.kind==='native')throw Error('Rename native games from their own menu');
+      const clean=typeof name==='string'?name.replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,120):'';if(!clean)throw Error('Invalid game name');
+      const group=groupGames(library.games).find(g=>g.id===game.id||g.discs?.some(d=>d.id===game.id)),ids=new Set(group?.discs?group.discs.map(d=>d.id):[game.id]);
+      const next={...library,game_names:{...(library.game_names||{}),...Object.fromEntries([...ids].map(id=>[id,clean]))},games:library.games.map(g=>ids.has(g.id)?{...g,title:clean,named:true}:g).sort(byTitle)};
+      await scanner.saveLibrary(libraryFile,next);library=next;return {games:publicGames()};
+    }));
     handle('covers:local',gameId=>serialized(async()=>{
       requireAdmin('xenia');const game=coverGame(gameId);
       if(pickerOpen)throw Error('A file picker is already open');
@@ -921,9 +932,23 @@ else {
           }
         }finally{sendCoverProgress({kind:'auto',done:++done,total:wanted.length});}
       }
-      const next={...library,auto_cover_source:mode,games:library.games.map(g=>files.has(g.id)?{...g,cover_art_path:files.get(g.id).file,uses_fallback_art:false,cover_source:files.get(g.id).source,cover_title_id:files.get(g.id).reference||null}:g)};
+      // Names, for every Xenia game that has none yet (a game whose cover was already there too): the first source that has one wins.
+      // LaunchBox only answers when the whole name matches, so it restores punctuation; Xenia Manager answers by title ID.
+      const names=new Map(),known=library.game_names||{};
+      for(const game of xenia){
+        if(all!==true&&known[game.id])continue;
+        for(const source of order){
+          let found=null;try{found=await source.name({title:coverTitle(game),titleId:game.title_id});}catch{continue;}requireAdmin('dashboard');
+          const name=typeof found==='string'?found.replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,120):'';
+          if(name){if(name!==game.title)names.set(game.id,name);break;}
+        }
+      }
+      const next={...library,auto_cover_source:mode,game_names:{...known,...Object.fromEntries(names)},games:library.games.map(g=>{
+        const cover=files.get(g.id),name=names.get(g.id);
+        return {...g,...(cover?{cover_art_path:cover.file,uses_fallback_art:false,cover_source:cover.source,cover_title_id:cover.reference||null}:{}),...(name?{title:name,named:true}:{})};
+      }).sort(byTitle)};
       await scanner.saveLibrary(libraryFile,next);library=next;coverRevision++;
-      return {games:publicGames(),downloaded:files.size,missing:wanted.length-files.size};
+      return {games:publicGames(),downloaded:files.size,missing:wanted.length-files.size,renamed:names.size};
     }));
     handle('admin:exit', () => { requireAdmin('dashboard'); allowQuit = true; app.quit(); });
     // Dashboard Settings › Updates. Every call needs the Dashboard session and takes only fixed values: the renderer never passes a URL.

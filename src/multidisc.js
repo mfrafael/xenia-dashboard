@@ -20,7 +20,7 @@ function groupGames(games){
   for(const list of buckets.values()){
     if(list.length<2||new Set(list.map(item=>item.disc.number)).size!==list.length){result.push(...list.map(item=>item.game));continue;}
     list.sort((a,b)=>a.disc.number-b.disc.number);
-    result.push({...list[0].game,title:list[0].disc.title,discs:list.map(({game,disc})=>({...game,disc_number:disc.number}))});
+    result.push({...list[0].game,title:list[0].game.named?list[0].game.title:list[0].disc.title,discs:list.map(({game,disc})=>({...game,disc_number:disc.number}))});
   }
   return result.sort((a,b)=>a.title.localeCompare(b.title)||a.id.localeCompare(b.id));
 }

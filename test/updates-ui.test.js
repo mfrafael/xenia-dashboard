@@ -145,11 +145,11 @@ test('B and Return go back to Dashboard Settings', async () => {
   assert.equal(h.run('window.__back'), 1);
 });
 
-test('the tile sits after Install Wizard and before Exit to desktop and opens the screen', () => {
+test('the tile is the first one of Dashboard Settings and opens the screen', () => {
   const registry = createSectionRegistry(), entered = [];
   require('../sections/settings').registerSettingsSections(registry, { enter: name => entered.push(name) });
   const dashboard = registry.get('dashboard'), ids = dashboard.items().map(item => item.id);
-  assert.deepEqual(ids.slice(ids.indexOf('wizard')), ['wizard', 'updates', 'exit']);
+  assert.equal(ids[0], 'updates');
   dashboard.activate(dashboard.items().find(item => item.id === 'updates'));
   assert.deepEqual(entered, ['dashboard:updates']);
 });

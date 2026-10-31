@@ -180,7 +180,7 @@ test('settings sections list real tiles and route them through ctx.enter', () =>
   const xenia = registry.get('xenia'), dashboard = registry.get('dashboard');
   assert.equal(xenia.kind, 'tiles');
   assert.deepEqual(xenia.items().map(item => item.id), ['system', 'locations', 'updates', 'profiles', 'games', 'advanced']);
-  assert.deepEqual(dashboard.items().map(item => item.id), ['themes', 'sound', 'covers', 'security', 'wizard', 'updates', 'exit']);
+  assert.deepEqual(dashboard.items().map(item => item.id), ['updates', 'themes', 'sound', 'covers', 'security', 'wizard', 'exit']);
   const tile = (section, id) => section.items().find(item => item.id === id);
   xenia.activate(tile(xenia, 'profiles')); dashboard.activate(tile(dashboard, 'exit'));
   assert.deepEqual(entered, ['xenia:profiles', 'dashboard:exit']);

@@ -47,6 +47,11 @@ function createService(fetcher) {
       return boxart(id);
     },
     // Title IDs read from the game files identify the exact x360db entry, so no search is needed.
+    // The catalogue's name for a title ID, or null.
+    async nameOf(id) {
+      if (typeof id !== 'string' || !/^[0-9A-F]{8}$/.test(id)) return null;
+      return (await loadCatalog()).find(g => g.id.toUpperCase() === id)?.title || null;
+    },
     async downloadTitle(id) {
       if (typeof id !== 'string' || !/^[0-9A-F]{8}$/.test(id)) throw new Error('Invalid title ID');
       return boxart(id);

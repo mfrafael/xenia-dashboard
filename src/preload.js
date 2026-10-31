@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   searchCovers: (gameId, source, query) => ipcRenderer.invoke('covers:search', gameId, source, query),
   coverPictures: (gameId, source, key) => ipcRenderer.invoke('covers:pictures', gameId, source, key),
   previewCover: (gameId, source, key, picture) => ipcRenderer.invoke('covers:preview', gameId, source, key, picture),
+  nameGame: (gameId, name) => ipcRenderer.invoke('covers:name', gameId, name),
   applyCover: (gameId, source, key, picture) => ipcRenderer.invoke('covers:apply', gameId, source, key, picture),
   chooseCoverFile: gameId => ipcRenderer.invoke('covers:local', gameId),
   onCoverProgress: callback => {
