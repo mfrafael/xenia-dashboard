@@ -46,8 +46,9 @@ The first screen is deliberately neutral, so it does not favour any era: a timel
 
 ![Game options](docs/screenshots/game-options.jpg)
 
-- **Covers:** one manager per game or in bulk (*Download covers* / *Download missing covers*), from a local file, the Xenia Manager database or LaunchBox.
-- **Games that run by themselves** (recompilations such as *Unleashed Recompiled* or *Zelda 64: Recompiled*, and PC ports): *Xenia Settings › Folders › Add games…* takes any file that starts a game: `.exe`, `.AppImage` and `.sh` on Linux (or any other file, via *All files*), `.exe`, `.bat`, `.cmd` and `.lnk` on Windows. You name each one and pick its cover from LaunchBox, any platform; a name LaunchBox does not know is added anyway. They launch without Xenia and the dashboard comes back when they close. On Linux a Windows `.exe` runs with Wine or Proton (*Game settings › Run with*).
+- **Covers and names:** one manager per game or in bulk (*Download covers* / *Download missing covers*), from a local file, the Xenia Manager database or LaunchBox. The same download also gives your games their proper names ("Naruto: The Broken Bond", not the file name). Your own file is never renamed.
+- **Fix a wrong cover** with *Change cover › LaunchBox › Search LaunchBox for…*, and ask which name to keep when the source's differs from yours.
+- **Hide games** you do not want in the library; *Xenia Settings › Games* brings them back.
 - **Game details** from x360db, with title IDs read from ISO / XEX / STFS headers, so Arcade and Games-on-Demand packages are listed too. Multi-disc games become one tile.
 - **DLC and title updates** found in your ROM folder are copied unchanged into Xenia's content folder.
 - **Patches:** download and toggle them by name ([game-patches](https://github.com/xenia-canary/game-patches)).
@@ -57,6 +58,16 @@ The first screen is deliberately neutral, so it does not favour any era: a timel
 | | |
 |:--|:--|
 | ![Game details](docs/screenshots/game-details.jpg) | ![Change cover](docs/screenshots/change-cover.jpg) |
+
+## Recomps and PC ports
+
+Games that do not need Xenia (static recompilations such as *Unleashed Recompiled* or *Zelda 64: Recompiled*, and native PC ports) sit in the same library as your Xbox 360 games, with the same covers, menus and controller.
+
+- **Add them from the couch:** *Xenia Settings › Folders › Add games…* takes any file that starts a game. On Linux that is `.exe`, `.AppImage` or `.sh` (or any other file, via *All files*); on Windows `.exe`, `.bat`, `.cmd` or `.lnk`.
+- **Name and cover:** you name each one and pick its cover from LaunchBox, from any platform. A name LaunchBox does not know is added anyway, and you can rename it or change its cover later in the game's menu (*Game settings* and *Change cover*).
+- **They launch without Xenia,** and the dashboard comes back when the game closes.
+- **Run with (Linux):** a Windows `.exe` runs with Wine, Proton or GE-Proton, chosen per game in *Game settings › Run with*.
+- **Remove from library** in a game's menu takes it out of the dashboard; the files stay where they are.
 
 ## Xenia, configured from the couch
 
@@ -182,4 +193,4 @@ Fullscreen kiosk mode blocks app close/navigation/devtools controls, but OS shor
 - **[LaunchBox Games Database](https://gamesdb.launchbox-app.com/)** — optional cover source, downloaded on demand.
 - **[Xenia](https://xenia.jp/)** — the emulator.
 
-This is a personal, non-commercial project made for learning. Source code is MIT ([LICENSE](LICENSE)). The dashboard artwork, sounds and fonts are Microsoft's, taken from the Xbox 360 dashboards, and the background music is a fan recording; they are included for personal, non-profit use only and are not covered by the MIT license. The repository is private and is not meant to be redistributed. Dashboard artwork and sounds, music, game covers and Xbox trademarks belong to their owners; see [asset attribution](assets/ATTRIBUTION.md), [dashboard resources](docs/NXE-ASSETS.md), [FFmpeg notice](FFMPEG-NOTICE.md) and [VALIDATION.md](docs/VALIDATION.md).
+This is a personal, non-commercial project made for learning. Source code is MIT ([LICENSE](LICENSE)). The dashboard artwork, sounds and fonts are Microsoft's, taken from the Xbox 360 dashboards, and the background music is a fan recording; they are included for personal, non-profit use only and are not covered by the MIT license. Do not redistribute that material on its own. Dashboard artwork and sounds, music, game covers and Xbox trademarks belong to their owners; see [asset attribution](assets/ATTRIBUTION.md), [dashboard resources](docs/NXE-ASSETS.md), [FFmpeg notice](FFMPEG-NOTICE.md) and [VALIDATION.md](docs/VALIDATION.md).
