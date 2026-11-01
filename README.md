@@ -177,7 +177,7 @@ skins/       the four views: blades, nxe, kinect, metro-v1
 assets/      bundled dashboard artwork, sounds and music
 test/        node:test suites, helpers and fixtures
 tools/       developer tools (UI preview and screenshots)
-docs/        architecture, roadmap, manual tests, asset notes
+docs/        architecture, manual tests, asset notes
 ```
 
 ## Settings and kiosk limits
